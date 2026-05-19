@@ -77,8 +77,6 @@
   ansible.builtin.include_tasks: sharpyshell.yml
 - name: Setup sigmapotato
   ansible.builtin.include_tasks: sigmapotato.yml
-- name: Setup sliver
-  ansible.builtin.include_tasks: sliver.yml
 - name: Setup sqlmap
   ansible.builtin.include_tasks: sqlmap.yml
 - name: Setup weevely

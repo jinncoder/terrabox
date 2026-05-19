@@ -24,9 +24,9 @@
     dest: "{{ vm_tool_base }}/sliver/{{ item.local }}"
     mode: "0755"
   loop:
-    - remote: sliver-client_linux
+    - remote: sliver-client_linux-amd64
       local: sliver-client
-    - remote: sliver-server_linux
+    - remote: sliver-server_linux-amd64
       local: sliver-server
   when: not sliver_bin.stat.exists
 

@@ -5,7 +5,7 @@
 
 - name: Download golang
   ansible.builtin.get_url:
-    url: "https://go.dev/dl/go1.25.2.linux-amd64.tar.gz"
+    url: "https://go.dev/dl/go1.26.3.linux-amd64.tar.gz"
     dest: /tmp/golang.tgz
     mode: "600"
   when: not go_bin.stat.exists

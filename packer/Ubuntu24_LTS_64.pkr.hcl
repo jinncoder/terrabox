@@ -14,6 +14,7 @@ packer {
 }
 
 # https://developer.hashicorp.com/packer/docs/templates/hcl_templates/blocks/build/source
+# https://developer.hashicorp.com/packer/integrations/hashicorp/virtualbox
 # https://developer.hashicorp.com/packer/integrations/hashicorp/virtualbox/latest/components/builder/iso
 source "virtualbox-iso" "ubuntu_builder" {
   boot_command = [
@@ -53,6 +54,7 @@ source "virtualbox-iso" "ubuntu_builder" {
   ssh_timeout            = "10000s"
   ssh_username           = "${var.ansible_user}"
   disable_shutdown       = true
+  keep_registered        = true
   vboxmanage             = [
     ["modifyvm", "{{ .Name }}", "--memory", "${var.ram}"],
     ["modifyvm", "{{ .Name }}", "--vram", "128"],
