@@ -1,5 +1,5 @@
-- name: Configure Regolith
-  ansible.builtin.include_tasks: regolith.yml
+- name: Configure Sway
+  ansible.builtin.include_tasks: sway.yml
 
 - name: Configure ZSH
   ansible.builtin.include_tasks: zsh.yml
@@ -9,3 +9,9 @@
 
 - name: Configure system
   ansible.builtin.include_tasks: system.yml
+
+- name: Configure font (Iosevka)
+  ansible.builtin.include_tasks: iosevka.yml
+
+- name: Install custom scripts to ~/.local/bin/
+  ansible.builtin.include_tasks: bin.yml

@@ -4,3 +4,17 @@
     VBoxService --disable-vminfo;
 
 sudo touch /etc/NetworkManager/conf.d/20-connectivity-ubuntu.conf
+
+
+==> virtualbox-iso.ubuntu_builder: TASK [htb : Change ownership on config] ****************************************
+==> virtualbox-iso.ubuntu_builder: [ERROR]: Task failed: Module failed: file (/home/user/.sliver-client/configs/user_127.0.0.1.cfg) is absent, cannot continue
+==> virtualbox-iso.ubuntu_builder: Origin: /tmp/tmp.nus9oMsjnI/ansible/roles/htb/tasks/sliver.yml:63:3
+==> virtualbox-iso.ubuntu_builder: 
+==> virtualbox-iso.ubuntu_builder: 61   when: not sliver_config.stat.exists
+==> virtualbox-iso.ubuntu_builder: 62
+==> virtualbox-iso.ubuntu_builder: 63 - name: Change ownership on config
+==> virtualbox-iso.ubuntu_builder:      ^ column 3
+==> virtualbox-iso.ubuntu_builder: 
+==> virtualbox-iso.ubuntu_builder: fatal: [default]: FAILED! => {"changed": false, "msg": "file (/home/user/.sliver-client/configs/user_127.0.0.1.cfg) is absent, cannot continue", "path": "/home/user/.sliver-client/configs/user_127.0.0.1.cfg", "state": "absent"}
+==> virtualbox-iso.ubuntu_builder:
+

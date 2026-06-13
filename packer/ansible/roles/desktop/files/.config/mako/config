@@ -1,0 +1,67 @@
+font=Iosevka Term SS06 16
+
+# Placement
+anchor=top-left
+
+outer-margin=5
+margin=5
+
+# Size
+width=420
+height=140
+
+# Layout
+padding=4
+border-size=1
+border-radius=2
+
+# Timing
+default-timeout=5000
+ignore-timeout=0
+
+# Appearance
+background-color=#1e2b2fff
+text-color=#ecdad2ff
+border-color=#a566f9ff
+
+# Progress bars
+progress-color=source #53efbdff
+
+# Icons
+icons=1
+max-icon-size=48
+
+# Text
+markup=1
+text-alignment=left
+
+# Layer
+layer=overlay
+
+# Group duplicate notifications
+group-by=none
+max-visible=14
+sort=-time
+
+# Mouse actions
+on-button-left=dismiss
+on-button-middle=invoke-default-action
+on-button-right=dismiss-all
+
+[urgency=low]
+background-color=#1e2b2fff
+text-color=#b8c0c2ff
+border-color=#53efbd88
+default-timeout=2500
+
+[urgency=normal]
+background-color=#1e2b2fff
+text-color=#ecdad2ff
+border-color=#a566f9ff
+default-timeout=5000
+
+[urgency=high]
+background-color=#1e2b2fff
+text-color=#ecdad2ff
+border-color=#fc1e2eff
+default-timeout=0

@@ -1,11 +1,6 @@
 - name: Setup custom repositories
   ansible.builtin.include_tasks: repository.yml
   loop:
-    - name: regolith
-      key_url: https://archive.regolith-desktop.com/regolith.key
-      repo_url: https://archive.regolith-desktop.com/ubuntu/stable
-      repo_extra: "arch=amd64"
-      repo_pool: "noble v3.3"
     - name: firefox
       key_url: https://packages.mozilla.org/apt/repo-signing-key.gpg
       repo_url: "https://packages.mozilla.org/apt"
@@ -50,20 +45,6 @@
     cache_valid_time: 86400 # One day
     name:
       - firefox
-      - regolith-desktop
-      - regolith-session-flashback
-      - regolith-look-solarized-dark
-      - i3xrocks-app-launcher
-      - i3xrocks-cpu-usage
-      - i3xrocks-disk-capacity
-      - i3xrocks-focused-window-name
-      - i3xrocks-info
-      - i3xrocks-memory
-      - i3xrocks-net-traffic
-      - i3xrocks-next-workspace
-      - i3xrocks-rofication
-      - i3xrocks-time
-      - i3xrocks-temp
       - build-essential
       - bzip2
       - wireshark
@@ -77,7 +58,7 @@
       - openvpn
       - zsh
       - git
-      - neovim
+      - vim
       - libreoffice
       - python3-venv
       - python3-pip
@@ -109,6 +90,26 @@
       - ffuf
       - gobuster
       - hydra
+      - sway
+      - swaybg
+      - swayidle
+      - swaylock
+      - waybar
+      - foot
+      - grim
+      - slurp
+      - wl-clipboard
+      - mako-notifier
+      - playerctl
+      - xdg-desktop-portal-wlr
+      - pipewire
+      - wireplumber
+      - pavucontrol
+      - policykit-1-gnome
+      - fuzzel
+      - cliphist
+      - nnn
+      - unzip
       - libssl-dev # for JTR
       - libpcap-dev # for PCredz
 
@@ -125,6 +126,4 @@
     purge: true
   with_items:
     - ufw
-    # - ubuntu-session # Work-around until this is fixed: https://github.com/regolith-linux/regolith-desktop/issues/504
     - gnome-initial-setup
-    # - regolith-wm-workspace-config # Work-around until this is fixed: https://github.com/regolith-linux/regolith-desktop/issues/504

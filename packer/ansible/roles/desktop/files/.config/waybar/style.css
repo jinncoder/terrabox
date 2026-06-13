@@ -1,0 +1,129 @@
+@define-color bg rgba(30, 43, 47, 0.72);
+@define-color fg #ecdad2;
+
+* {
+	border: none;
+	min-height: 0;
+
+	font-family: "Iosevka Term SS06";
+	font-size: 16px;
+	font-weight: 500;
+}
+
+window#waybar {
+	background: transparent;
+	color: @fg;
+}
+
+/* Floating pills */
+
+#workspaces,
+#window,
+#clock,
+#cpu,
+#memory,
+#disk,
+#network,
+#pulseaudio,
+#tray {
+	background: @bg;
+
+	border-radius: 2px;
+
+	margin: 4px;
+	padding-left: 14px;
+	padding-right: 14px;
+}
+
+#network.ethernet.disconnected {
+	background: transparent;
+	padding: 0;
+	margin: 0;
+	min-width: 0;
+}
+
+/* Workspaces */
+
+#workspaces {
+	padding-left: 6px;
+	padding-right: 6px;
+}
+
+#workspaces button {
+	border-radius: 2px;
+
+	margin: 2px;
+	padding-left: 10px;
+	padding-right: 10px;
+
+	color: rgba(236, 218, 210, 0.60);
+}
+
+#workspaces button.active {
+	background: rgba(255, 255, 255, 0.18);
+	color: #ffffff;
+}
+
+#workspaces button:hover {
+	background: rgba(255, 255, 255, 0.12);
+	color: #ffffff;
+}
+
+/* Focused window */
+
+#window {
+	color: #ecdad2;
+	font-style: italic;
+}
+
+#window.empty {
+	background: transparent;
+	padding: 0;
+	margin: 0;
+}
+
+/* Aurora accent */
+
+#clock {
+	color: #53efbd;
+}
+
+/* Main modules */
+
+#cpu,
+#memory,
+#disk,
+#network,
+#pulseaudio,
+#tray {
+	color: #ecdad2;
+}
+
+#pulseaudio {
+	min-width: 90px;
+}
+
+/* Tooltips */
+
+tooltip {
+	background: rgba(59, 82, 63, 0.95);
+	color: #ecdad2;
+
+	border-radius: 2px;
+	border: none;
+}
+
+#custom-power {
+	font-family: "Iosevka Term SS06";
+	font-size: 28px;
+	background: rgba(40, 45, 40, 0.90);
+}
+
+#taskbar {
+	margin-left: 8px;
+}
+
+#taskbar button {
+	margin: 0 2px;
+	padding: 0 2px;
+}

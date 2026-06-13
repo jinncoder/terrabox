@@ -37,3 +37,16 @@ function nimcrypt2() {
 
 alias msfconsole='docker run --network host --volume /tmp/:/tmp/ --rm -it metasploit'
 alias msfvenom='docker run --rm -it --volume /tmp/:/tmp/ --entrypoint /bin/bash metasploit'
+
+function webout() {
+  sudo iptables -I OUTPUT -p tcp --dport 993 -j ACCEPT
+  sudo iptables -I OUTPUT -p tcp --dport 443 -j ACCEPT
+  sudo iptables -I OUTPUT -p tcp --dport 5353 -j ACCEPT
+  sudo iptables -I OUTPUT -p tcp --dport 53 -j ACCEPT
+  sudo iptables -I OUTPUT -p tcp --dport 80 -j ACCEPT
+  sudo iptables -I OUTPUT -p tcp --dport 1337 -j ACCEPT
+  sudo iptables -I OUTPUT -p udp --dport 53 -j ACCEPT
+  sudo iptables -I OUTPUT -p udp --dport 5353 -j ACCEPT
+  sudo iptables -I OUTPUT -p udp --dport 443 -j ACCEPT
+  sudo iptables -I OUTPUT -p udp --dport 1337 -j ACCEPT
+}

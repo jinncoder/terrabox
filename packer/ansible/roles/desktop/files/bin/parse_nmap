@@ -1,0 +1,51 @@
+#!/usr/bin/env -S uv run --script
+#
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+# ]
+# ///
+
+import xml.etree.ElementTree as ET
+import sys
+
+def parse_nmap_xml(xml_input):
+    if xml_input.strip().startswith("<"):
+        root = ET.fromstring(xml_input)
+    else:
+        tree = ET.parse(xml_input)
+        root = tree.getroot()
+
+    for host in root.findall("host"):
+        addr = host.find("address").get("addr")
+        hostname_el = host.find(".//hostname")
+        hostname = hostname_el.get("name") if hostname_el is not None else "N/A"
+
+        print(f"Host: {addr} ({hostname})")
+        print(f"{'PORT':<10} {'PROTO':<8} {'STATE':<10} {'SERVICE':<15} {'PRODUCT/VERSION'}")
+        print("-" * 75)
+
+        for port in host.findall(".//port"):
+            portid   = port.get("portid")
+            proto    = port.get("protocol")
+            state    = port.find("state").get("state")
+            svc      = port.find("service")
+
+            if svc is not None:
+                name    = svc.get("name", "")
+                product = svc.get("product", "")
+                version = svc.get("version", "")
+                detail  = f"{product} {version}".strip()
+            else:
+                name, detail = "", ""
+
+            print(f"{portid:<10} {proto:<8} {state:<10} {name:<15} {detail}")
+
+        print()
+
+if __name__ == "__main__":
+    with open("target.xml") as f:
+        xml_data = f.read()
+
+    parse_nmap_xml(xml_data)
+

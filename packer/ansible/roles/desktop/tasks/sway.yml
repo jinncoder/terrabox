@@ -1,0 +1,64 @@
+- name: Default Window Manager to sway
+  ansible.builtin.copy:
+    src: files/wm
+    dest: /var/lib/AccountsService/users/{{ vm_user }}
+    mode: "0644"
+    owner: root
+    group: root
+    force: true
+
+- name: Set login logo
+  ansible.builtin.copy:
+    src: files/face.png
+    dest: /home/{{ vm_user }}/.face
+    mode: "0640"
+    owner: "{{ vm_user }}"
+    group: "{{ vm_user }}"
+    force: true
+
+- name: Ensure config directories exist
+  ansible.builtin.file:
+    path: "/home/{{ vm_user }}/{{ item }}"
+    state: directory
+    owner: "{{ vm_user }}"
+    group: "{{ vm_user }}"
+    mode: "0755"
+  loop:
+    - .config/foot
+    - .config/fuzzel
+    - .config/gtk-3.0
+    - .config/mako
+    - .config/nemo
+    - .config/sway
+    - .config/swaylock
+    - .config/waybar
+
+- name: Install fuzzel shell scripts
+  ansible.builtin.copy:
+    src: "files/{{ item }}"
+    dest: "/home/{{ vm_user }}/{{ item }}"
+    owner: "{{ vm_user }}"
+    group: "{{ vm_user }}"
+    mode: "0755"
+  loop:
+    - .config/fuzzel/power-menu.sh
+    - .config/fuzzel/workspace-rename.sh
+    - .config/fuzzel/workspace-switch.sh
+
+- name: Install config files
+  ansible.builtin.copy:
+    src: "files/{{ item }}"
+    dest: "/home/{{ vm_user }}/{{ item }}"
+    owner: "{{ vm_user }}"
+    group: "{{ vm_user }}"
+    mode: "0644"
+  loop:
+    - .config/foot/foot.ini
+    - .config/fuzzel/fuzzel.ini
+    - .config/gtk-3.0/settings.ini
+    - .config/gtk-3.0/bookmarks
+    - .config/mako/config
+    - .config/sway/config
+    - .config/swaylock/config
+    - .config/waybar/config
+    - .config/waybar/style.css

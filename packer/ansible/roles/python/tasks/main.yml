@@ -3,6 +3,11 @@
     name: pipx
     break_system_packages: true
 
+- name: Install uv
+  ansible.builtin.pip:
+    name: uv
+    break_system_packages: true
+
 - name: Install github3.py
   ansible.builtin.pip:
     name: github3.py

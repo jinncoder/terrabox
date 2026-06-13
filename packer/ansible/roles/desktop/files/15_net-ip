@@ -1,6 +1,0 @@
-# Show IPv4 address for specified network interface
-[net-ip]
-interval=10
-iface=enp0s3,tun0
-alias=enp0s3:LAN,tun0:HTB
-hide_down=true

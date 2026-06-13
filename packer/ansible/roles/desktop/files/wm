@@ -1,7 +1,7 @@
 [User]
 Languages=;
-Session=regolith-x11
-XSession=i3
+Session=sway
+XSession=sway
 Icon=/home/user/.face
 SystemAccount=false
 

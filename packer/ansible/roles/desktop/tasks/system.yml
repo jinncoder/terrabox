@@ -1,14 +1,3 @@
-# START nuke when migration to sway
-- name: Disable lock screen
-  ansible.builtin.command:
-    cmd: "{{ item }}"
-  loop:
-    - /usr/bin/dbus-launch gsettings set org.gnome.desktop.screensaver lock-enabled false
-    - /usr/bin/dbus-launch gsettings set org.gnome.gnome-flashback screensaver false
-  become: true
-  become_user: "{{ vm_user }}"
-# STOP nuke when migration to sway
-
 - name: Copy background
   ansible.builtin.copy:
     src: files/background.jpg
@@ -37,3 +26,23 @@
       - 8.8.8.8
     dns4_ignore_auto: true
     state: present
+
+- name: Populate /etc/environment with Wayland environment variables
+  ansible.builtin.blockinfile:
+    path: /etc/environment
+    block: |
+      WLR_DRM_NO_MODIFIERS=1
+      WLR_RENDERER=pixman
+      WLR_DRM_DEVICES=/dev/dri/card0
+      QT_WAYLAND_DISABLE_WINDOW_DECORATION=1
+      XDG_CURRENT_DESKTOP=sway
+      QT_QPA_PLATFORM=wayland
+      CLUTTER_BACKEND=wayland
+      SDL_VIDEODRIVER=wayland
+      MOZ_ENABLE_WAYLAND=1
+      EDITOR=vim
+    marker: "# {mark} ANSIBLE MANAGED WAYLAND ENV VARS"
+    create: yes
+    owner: root
+    group: root
+    mode: '0644'

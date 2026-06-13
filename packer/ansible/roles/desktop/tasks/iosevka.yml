@@ -1,0 +1,47 @@
+- name: Setup Iosevka SS06 font
+  vars:
+    iosevka_version: "34.6.1"
+    iosevka_variant: "IosevkaSS06"
+    iosevka_zip: "SuperTTC-IosevkaSS06-{{ iosevka_version }}.zip"
+    iosevka_url: "https://github.com/be5invis/Iosevka/releases/download/v{{ iosevka_version }}/{{ iosevka_zip }}"
+    iosevka_font_dir: "/usr/share/fonts/truetype/iosevka"
+  block:
+    - name: Install unzip dependency
+      ansible.builtin.package:
+        name: unzip
+        state: present
+
+    - name: Create Iosevka fonts directory
+      ansible.builtin.file:
+        path: "{{ iosevka_font_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Download Iosevka SS06 SuperTTC archive
+      ansible.builtin.get_url:
+        url: "{{ iosevka_url }}"
+        dest: "/tmp/{{ iosevka_zip }}"
+        mode: '0644'
+
+    - name: Unzip Iosevka SS06 archive
+      ansible.builtin.unarchive:
+        src: "/tmp/{{ iosevka_zip }}"
+        dest: /tmp/
+        remote_src: yes
+
+    - name: Move .ttc font files to fonts directory
+      ansible.builtin.shell:
+        cmd: "mv /tmp/*.ttc {{ iosevka_font_dir }}/"
+      args:
+        creates: "{{ iosevka_font_dir }}/{{ iosevka_variant }}.ttc"
+
+    - name: Remove downloaded zip archive
+      ansible.builtin.file:
+        path: "/tmp/{{ iosevka_zip }}"
+        state: absent
+
+    - name: Rebuild font cache
+      ansible.builtin.command: fc-cache -f -v
+      changed_when: true

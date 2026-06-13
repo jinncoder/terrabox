@@ -1,0 +1,574 @@
+#!/usr/bin/env python3
+
+import argparse
+import http.client
+import sys
+import fcntl
+import json
+import socket
+import struct
+import urllib.parse
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from os import environ
+from time import sleep
+from http.client import RemoteDisconnected, HTTPException
+
+HTB_API_ROOT = "https://labs.hackthebox.com/api/v4"
+
+SEASON_LIST_URL = f"{HTB_API_ROOT}/season/list"
+SEASON_MACHINE_LIST_URL = f"{HTB_API_ROOT}" + "/season/machines/{season_id}"
+MACHINE_PROFILE_URL = f"{HTB_API_ROOT}" + "/machine/profile/{machine_id}"
+MACHINE_SPAWN_URL = f"{HTB_API_ROOT}/vm/spawn"
+MACHINE_RESET_URL = f"{HTB_API_ROOT}/vm/reset"
+MACHINE_STOP_URL = f"{HTB_API_ROOT}/vm/terminate"
+ACTIVE_MACHINE_URL = f"{HTB_API_ROOT}/machine/active"
+
+USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64; rv:148.0) Gecko/20100101 Firefox/148.0"
+
+NOW = datetime.now(timezone.utc)
+
+
+class Session:
+    """
+    Persistent HTTPS session (keep-alive) per host, analogous to requests.Session.
+    Stores default headers (auth, user-agent, ...) so callers never build them manually.
+    Transparently reconnects once on RemoteDisconnected / BrokenPipe.
+
+    Use as a context manager to guarantee the socket is closed on exit.
+    """
+
+    _DEFAULT_HEADERS = {
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "identity",
+        "Origin": "https://app.hackthebox.com",
+        "Connection": "keep-alive",
+        "Referer": "https://app.hackthebox.com/",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-site",
+        "TE": "trailers",
+    }
+
+    def __init__(
+        self,
+        token: str,
+        user_agent: str = USER_AGENT,
+    ):
+        self.headers: dict[str, str] = {
+            **self._DEFAULT_HEADERS,
+            "User-Agent": user_agent,
+            "Authorization": f"Bearer {token}",
+        }
+
+        self.__connections: dict[str, http.client.HTTPSConnection] = {}
+
+    def __get_conn(self, host: str) -> http.client.HTTPSConnection:
+        if host not in self.__connections:
+            self.__connections[host] = http.client.HTTPSConnection(host)
+
+        return self.__connections[host]
+
+    def __drop_conn(self, host: str) -> None:
+        conn = self.__connections.pop(host, None)
+
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def request(
+        self,
+        url: str,
+        data: bytes | None = None,
+        method: str = "GET",
+        extra_headers: dict | None = None,
+    ) -> dict | list | bool:
+        parsed = urllib.parse.urlparse(url)
+        host = parsed.netloc
+        path = parsed.path + (f"?{parsed.query}" if parsed.query else "")
+        method = method.upper()
+
+        headers = dict(self.headers)
+
+        if extra_headers:
+            headers.update(extra_headers)
+
+        if data is not None:
+            headers["Content-Length"] = str(len(data))
+
+        # one transparent retry on stale-connection errors
+        for attempt in range(2):
+            try:
+                conn = self.__get_conn(host)
+
+                conn.request(method, path, body=data, headers=headers)
+
+                resp = conn.getresponse()
+                body = resp.read().decode()
+
+                if resp.status >= 400:
+                    print(f"HTTPError: {resp.status} {resp.reason} {body}", file=sys.stderr)
+                    return False
+
+                return json.loads(body)
+
+            except (
+                RemoteDisconnected,
+                BrokenPipeError,
+                HTTPException,
+                ConnectionResetError,
+            ):
+                self.__drop_conn(host)  # force a fresh socket on next attempt
+
+                if attempt == 1:
+                    print(f"Connection to {host} failed after retry.", file=sys.stderr)
+                    return False
+
+            except OSError as exc:
+                print(f"URLError: {exc}", file=sys.stderr)
+                return False
+
+            except json.JSONDecodeError as exc:
+                print(f"JSON decode error: {exc}", file=sys.stderr)
+                return False
+
+        return False  # unreachable, satisfies type checkers
+
+    def get(self, url: str, **kwargs) -> dict | list | bool:
+        return self.request(url, method="GET", **kwargs)
+
+    def post(self, url: str, data: bytes, **kwargs) -> dict | list | bool:
+        return self.request(url, data=data, method="POST", **kwargs)
+
+    def close(self) -> None:
+        for host in list(self.__connections):
+            self.__drop_conn(host)
+
+    def __enter__(self) -> "Session":
+        return self
+
+    def __exit__(self, *_) -> None:
+        self.close()
+
+
+@dataclass
+class Machine:
+    LEVEL_STRING_TO_ICON = {
+        "easy": "🟢",
+        "medium": "🟡",
+        "hard": "🔴",
+        "insane": "💀",
+    }
+    OS_STRING_TO_ICON = {
+        "linux": "🐧",
+        "windows": "🪟",
+    }
+    FLAG_STRING_TO_ICON = {
+        "user": "👤",
+        "root": "👑",
+        "X": "🚫",
+    }
+
+    id: int
+    name: str
+    os: str
+    avatar: str
+    difficulty: str
+    release_time: datetime
+    unknown: bool
+    is_released: bool
+    is_owned_root: bool
+    is_owned_user: bool
+    is_root_blood: bool
+    is_user_blood: bool
+    root_points: int
+    user_points: int
+    user_blood_points: int
+    root_blood_points: int
+    active: bool
+    rating: float
+    ratingCount: int
+    info_status: str
+
+    @staticmethod
+    def from_dict(data: dict) -> "Machine":
+        return Machine(
+            id=data.get("id", 0),
+            name=data.get("name", ""),
+            os=data.get("os", "").lower(),
+            avatar=data.get("avatar", ""),
+            difficulty=data.get("difficulty_text", "").lower(),
+            release_time=datetime.fromisoformat(
+                data.get("release_time", "1970-01-01T00:00:00+00:00").replace("Z", "+00:00")
+            ),
+            unknown=data.get("unknown", False),
+            is_released=data.get("is_released", False),
+            is_owned_root=data.get("is_owned_root", False),
+            is_owned_user=data.get("is_owned_user", False),
+            is_root_blood=data.get("is_root_blood", False),
+            is_user_blood=data.get("is_user_blood", False),
+            root_points=data.get("root_points", 0),
+            user_points=data.get("user_points", 0),
+            user_blood_points=data.get("user_blood_points", 0),
+            root_blood_points=data.get("root_blood_points", 0),
+            active=data.get("active", False),
+            rating=data.get("rating", 0.0),
+            ratingCount=data.get("ratingCount", 0),
+            info_status=data.get("info_status", ""),
+        )
+
+    def __repr__(self):
+        user_icon = self.FLAG_STRING_TO_ICON.get("user" if self.is_owned_user else "X")
+        root_icon = self.FLAG_STRING_TO_ICON.get("root" if self.is_owned_root else "X")
+
+        return (
+            f"{self.id} - {self.OS_STRING_TO_ICON.get(self.os, '?')} "
+            f"{self.LEVEL_STRING_TO_ICON.get(self.difficulty, '?')} "
+            f"[{user_icon}/{root_icon}] : {self.name}"
+        )
+
+
+def release_distance(machine: Machine) -> float:
+    return abs((machine.release_time - NOW).total_seconds())
+
+
+def get_active_season(session: Session, url: str = SEASON_LIST_URL) -> dict | bool:
+    response = session.get(url)
+
+    if not response:
+        return False
+
+    for season in response.get("data", []):
+        if season.get("active"):
+            return season
+
+    return False
+
+
+def get_active_machine(session: Session, url: str = ACTIVE_MACHINE_URL) -> dict | bool:
+    response = session.get(url)
+
+    if not response or not response.get("info"):
+        return False
+
+    return response.get("info")
+
+
+def get_season_machine_list(
+    session: Session,
+    season: dict,
+    url: str = SEASON_MACHINE_LIST_URL,
+) -> list[Machine]:
+    url = url.format(season_id=int(season.get("id")))
+    data = session.get(url)
+
+    if not data:
+        return []
+
+    machines = [Machine.from_dict(m) for m in data.get("data", [])]
+
+    return sorted(machines, key=lambda m: m.release_time)
+
+
+def get_latest_season_machine(season_machine_list: list[Machine]) -> Machine | None:
+    candidates = [m for m in season_machine_list if not m.unknown and m.is_released]
+
+    return min(candidates, key=release_distance) if candidates else None
+
+
+def get_machine_info(
+    session: Session,
+    machine_id: int,
+    url: str = MACHINE_PROFILE_URL,
+) -> dict:
+    url = url.format(machine_id=int(machine_id))
+    data = session.get(url)
+
+    return Machine.from_dict((data or {}).get("info", {}))
+
+
+def get_active_machine_ip(session: Session) -> str | bool:
+    active_machine = get_active_machine(session)
+
+    if not active_machine:
+        return False
+
+    if active_machine.get("ip", ""):
+        info = get_machine_info(session, active_machine.get("id"))
+        print_machine_quickstart(session, active_machine["ip"], active_machine.get("id"))
+        print(info.info_status)
+        return active_machine["ip"]
+
+    return False
+
+
+def spawn_machine(
+    session: Session,
+    machine_id: int,
+    url: str = MACHINE_SPAWN_URL,
+) -> str | bool:
+    active_ip = get_active_machine_ip(session)
+
+    if active_ip:
+        return active_ip
+
+    body = json.dumps({"machine_id": machine_id}).encode()
+    response = session.post(url, data=body, extra_headers={"Content-Type": "application/json"})
+
+    if not response or response.get("error"):
+        print(response, file=sys.stderr)
+        return False
+
+    for _ in range(10):
+        active_ip = get_active_machine_ip(session)
+
+        if active_ip:
+            return active_ip
+
+        sleep(3)
+
+    return False
+
+
+def reset_machine(
+    session: Session,
+    url: str = MACHINE_RESET_URL,
+):
+    active_machine = get_active_machine(session)
+
+    if not active_machine:
+        return False
+
+    body = json.dumps({"machine_id": int(active_machine.get("id"))}).encode()
+    response = session.post(url, data=body, extra_headers={"Content-Type": "application/json"})
+
+    if not response or response.get("error"):
+        print(response, file=sys.stderr)
+        return False
+
+    for _ in range(10):
+        active_ip = get_active_machine_ip(session)
+
+        if active_ip:
+            return active_ip
+
+        sleep(3)
+
+    return False
+
+
+def terminate_machine(session: Session, url: str = MACHINE_STOP_URL):
+    active_machine = get_active_machine(session)
+
+    if not active_machine:
+        return "Done!"
+
+    body = json.dumps({"machine_id": int(active_machine.get("id"))}).encode()
+
+    return session.post(url, data=body, extra_headers={"Content-Type": "application/json"})
+
+
+def get_ipv4(interface: str = "tun0") -> str:
+    try:
+        SIOCGIFADDR = 0x8915  # https://man7.org/linux/man-pages/man7/netdevice.7.html
+
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            ifreq = struct.pack("16sH14s", interface.encode(), socket.AF_INET, b"\x00" * 14)
+            res = fcntl.ioctl(s.fileno(), SIOCGIFADDR, ifreq)
+
+        return socket.inet_ntoa(res[20:24])
+    except OSError:
+        print("Connect to VPN")
+
+    return False
+
+
+def list_seasons(args) -> None:
+    with Session(args.token) as session:
+        season = get_active_season(session)
+
+        if not season:
+            print("No active season found.", file=sys.stderr)
+            return
+
+        print(f"{season.get('name')} - {season.get('subtitle')}")
+
+        for machine in get_season_machine_list(session, season):
+            if machine.is_released:
+                print(machine)
+
+
+def spawn_season(args) -> None:
+    with Session(args.token) as session:
+        season = get_active_season(session)
+        machine_id = args.machine_id
+
+        if not args.machine_id:
+
+            if not season:
+                print("No active season found.", file=sys.stderr)
+                return
+
+            print(f"{season.get('name')} - {season.get('subtitle')}")
+            latest = get_latest_season_machine(get_season_machine_list(session, season))
+
+            if not latest:
+                print("No released machines found.", file=sys.stderr)
+                return
+
+            machine_id = latest.id
+
+        ip = spawn_machine(session, machine_id)
+
+def print_machine_quickstart(session, ip, machine_id):
+        machine = get_machine_info(session, machine_id)
+
+        print(machine, ":", ip)
+        print(f"""mkdir -p ~/{machine.name.lower()}
+cd {machine.name.lower()}
+cat > .env << 'EOF'
+export IP={ip}
+export ME={get_ipv4()}
+export HOST={machine.name.lower()}.htb
+
+sudo iptables -nvL | grep "${{IP}}"
+
+if [ $? -eq 1 ]; then
+  sudo iptables -I OUTPUT -d ${{IP}} -j ACCEPT
+fi
+
+grep "${{IP}}" /etc/hosts
+
+if [ $? -eq 1 ]; then
+  echo "${{IP}}\t${{HOST}}" | sudo tee -a /etc/hosts
+fi
+
+EOF
+
+source .env
+
+
+nmap -T4 -sC -sV -p- --min-rate=1000 -oA target -Pn "${{HOST}}"
+""")
+
+
+def info_active_vpn(args) -> None:
+    if ipv4 := get_ipv4():
+        print(ipv4)
+    # curl 'https://labs.hackthebox.com/api/v4/connection/status' \
+    #   --compressed \
+    #   -H 'User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:149.0) Gecko/20100101 Firefox/149.0' \
+    #   -H 'Accept: application/json, text/plain, */*' \
+    #   -H 'Accept-Language: en-US,en;q=0.9' \
+    #   -H 'Accept-Encoding: gzip, deflate, br, zstd' \
+    #   -H f'Authorization: Bearer {token}' \
+    #   -H 'Origin: https://app.hackthebox.com' \
+    #   -H 'Connection: keep-alive' \
+    #   -H 'Referer: https://app.hackthebox.com/' \
+    #   -H 'Sec-Fetch-Dest: empty' \
+    #   -H 'Sec-Fetch-Mode: cors' \
+    #   -H 'Sec-Fetch-Site: same-site'
+    # [{"type":"Release Arena","connection_type":"competitive","location_type_friendly":"US - Release Arena","server":{"id":123,"hostname":"edge-us-release-2.hackthebox.eu","friendly_name":"US Release Arena 2"},"connection":{"name":"{username}","through_pwnbox":false,"ip4":"1.1.1.1","ip6":"","down":0.08,"up":0.08}}]
+
+
+def info_active_machine(args) -> None:
+    with Session(args.token) as session:
+        machine_ip = get_active_machine_ip(session)
+
+        print(f"ip: {machine_ip}")
+
+
+def reset_active_machine(args) -> None:
+    with Session(args.token) as session:
+        machine_ip = reset_machine(session)
+
+        print(f"ip: {machine_ip}")
+
+
+def terminate_active_machine(args) -> None:
+    with Session(args.token) as session:
+        print(f"{terminate_machine(session)}")
+
+
+def cli() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="htb")
+    parser.set_defaults(func=lambda _: parser.print_help())
+
+    subparsers = parser.add_subparsers(title="subcommands", dest="command")
+
+    # Season parser
+    parser_season = subparsers.add_parser("season", help="Manage HTB seasons")
+    parser_season.set_defaults(func=lambda _: parser_season.print_help())
+
+    season_sub = parser_season.add_subparsers(dest="subcommand")
+
+    parser_list = season_sub.add_parser("list", help="List released machines in the active season")
+    parser_list.set_defaults(func=list_seasons)
+
+    parser_spawn = season_sub.add_parser("spawn", help="Spawn the latest season machine")
+    parser_spawn.add_argument("machine_id", nargs="?", help="Machine ID to spawn (optional)")
+    parser_spawn.set_defaults(func=spawn_season)
+
+    # VPN parser
+    parser_vpn = subparsers.add_parser("vpn", help="Manage HTB VPN")
+    parser_vpn.set_defaults(func=lambda _: parser_vpn.print_help())
+
+    vpn_sub = parser_vpn.add_subparsers(dest="subcommand")
+
+    parser_info = vpn_sub.add_parser("info", help="Show active VPN interface IP")
+    parser_info.set_defaults(func=info_active_vpn)
+
+    # Machine parser
+    parser_machine = subparsers.add_parser("machine", help="Manage HTB Machines")
+    parser_machine.set_defaults(func=lambda _: parser_machine.print_help())
+
+    machine_sub = parser_machine.add_subparsers(dest="subcommand")
+
+    parser_info = machine_sub.add_parser("info", help="Show active Machine Info")
+    parser_info.set_defaults(func=info_active_machine)
+
+    parser_reset = machine_sub.add_parser("reset", help="Reset the active machine")
+    parser_reset.set_defaults(func=reset_active_machine)
+
+    parser_stop = machine_sub.add_parser("stop", help="Terminate the active machine")
+    parser_stop.set_defaults(func=terminate_active_machine)
+
+    return parser
+
+
+def main(token: str) -> None:
+    parser = cli()
+
+    if not sys.argv[1:]:
+        parser.print_help()
+        sys.exit(1)
+
+    args = parser.parse_args()
+    args.token = token
+    args.func(args)
+
+
+if __name__ == "__main__":
+    token = environ.get("HTB_API_TOKEN")
+
+    if not token:
+        print("export HTB_API_TOKEN=...", file=sys.stderr)
+        sys.exit(1)
+
+    if environ.get("HTB_API_DEBUG"):
+
+        def __audit_hook(event, hook_args):
+            if "http" in event or "urllib" in event:
+                print(event, hook_args, "\n", "-=" * 30, file=sys.stderr)
+
+        sys.addaudithook(__audit_hook)
+
+    if not get_ipv4():
+        sys.exit(2)
+
+    main(token)
+
