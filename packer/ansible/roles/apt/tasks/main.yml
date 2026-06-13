@@ -110,6 +110,8 @@
       - cliphist
       - nnn
       - unzip
+      - flameshot
+      - imagemagick
       - libssl-dev # for JTR
       - libpcap-dev # for PCredz
 
