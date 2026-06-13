@@ -1,19 +1,565 @@
-- name: Purge apt packages and mark hold to prevent updates/installs
-  ansible.builtin.include_tasks: purge.yml
-  loop:
-    - name: apport-symptoms
-    - name: apport
-    - name: whoopsie
-    - name: ubuntu-report
-    - name: unattended-upgrades
-    - name: snapd
+---
+# =============================================================================
+# ubuntu_hardening – main tasks
+# Uses service_facts + stat checks instead of ignore_errors where possible.
+# ignore_errors is only kept for the HTTPS probe (expected failures by design).
+# =============================================================================
 
-- name: Stop and disable auto upgrade services
+# Gather service facts once – used throughout for existence checks
+- name: "Preflight | Collect service facts"
+  ansible.builtin.service_facts:
+  tags: always
+
+# -----------------------------------------------------------------------------
+# 0. Purge telemetry packages, hold them, and pin to Priority -10
+# -----------------------------------------------------------------------------
+- name: "Purge | Stop, remove, hold, and pin telemetry packages"
+  ansible.builtin.include_tasks: purge.yml
+  loop: "{{ hardening_purge_packages }}"
+  when: hardening_purge_packages | length > 0
+  tags: [telemetry, purge]
+
+- name: "Auto-upgrade services | Stop and disable"
   ansible.builtin.service:
     name: "{{ item }}"
     state: stopped
     enabled: false
-  ignore_errors: true
-  with_items:
+  loop:
     - apt-daily-upgrade
     - apt-daily
+  when:
+    - hardening_disable_apt_timers
+    - item in ansible_facts.services
+  tags: [updates, purge]
+
+# -----------------------------------------------------------------------------
+# 1. Apport – crash/error reporting daemon
+# -----------------------------------------------------------------------------
+- name: "Apport | Stop and disable service"
+  ansible.builtin.systemd:
+    name: apport
+    state: stopped
+    enabled: false
+  when:
+    - hardening_disable_apport
+    - "'apport.service' in ansible_facts.services"
+  tags: [telemetry, apport]
+
+- name: "Apport | Check /etc/default/apport exists"
+  ansible.builtin.stat:
+    path: /etc/default/apport
+  register: apport_default
+  when: hardening_disable_apport
+  tags: [telemetry, apport]
+
+- name: "Apport | Disable in /etc/default/apport"
+  ansible.builtin.lineinfile:
+    path: /etc/default/apport
+    regexp: '^enabled='
+    line: 'enabled=0'
+  when:
+    - hardening_disable_apport
+    - apport_default.stat.exists
+  tags: [telemetry, apport]
+
+# -----------------------------------------------------------------------------
+# 2. Whoopsie – error report uploader
+# -----------------------------------------------------------------------------
+- name: "Whoopsie | Stop and disable service"
+  ansible.builtin.systemd:
+    name: whoopsie
+    state: stopped
+    enabled: false
+  when:
+    - hardening_disable_whoopsie
+    - "'whoopsie.service' in ansible_facts.services"
+  tags: [telemetry, whoopsie]
+
+- name: "Whoopsie | Check /etc/default/whoopsie exists"
+  ansible.builtin.stat:
+    path: /etc/default/whoopsie
+  register: whoopsie_default
+  when: hardening_disable_whoopsie
+  tags: [telemetry, whoopsie]
+
+- name: "Whoopsie | Disable crash reporting in config"
+  ansible.builtin.lineinfile:
+    path: /etc/default/whoopsie
+    regexp: '^report_crashes='
+    line: 'report_crashes=false'
+  when:
+    - hardening_disable_whoopsie
+    - whoopsie_default.stat.exists
+  tags: [telemetry, whoopsie]
+
+# -----------------------------------------------------------------------------
+# 3. ubuntu-report
+# -----------------------------------------------------------------------------
+- name: "ubuntu-report | Check if binary exists"
+  ansible.builtin.stat:
+    path: /usr/bin/ubuntu-report
+  register: ubuntu_report_bin
+  when: hardening_disable_ubuntu_report
+  tags: [telemetry, ubuntu_report]
+
+- name: "ubuntu-report | Send 'no'"
+  ansible.builtin.command: ubuntu-report send no
+  when:
+    - hardening_disable_ubuntu_report
+    - ubuntu_report_bin.stat.exists
+  changed_when: true
+  tags: [telemetry, ubuntu_report]
+
+# -----------------------------------------------------------------------------
+# 4. Popularity Contest
+# -----------------------------------------------------------------------------
+- name: "Popcon | Check config exists"
+  ansible.builtin.stat:
+    path: /etc/popularity-contest.conf
+  register: popcon_conf
+  when: hardening_disable_popcon
+  tags: [telemetry, popcon]
+
+- name: "Popcon | Opt out in config"
+  ansible.builtin.lineinfile:
+    path: /etc/popularity-contest.conf
+    regexp: '^PARTICIPATE='
+    line: 'PARTICIPATE=no'
+  when:
+    - hardening_disable_popcon
+    - popcon_conf.stat.exists
+  tags: [telemetry, popcon]
+
+- name: "Popcon | Stop and disable service"
+  ansible.builtin.systemd:
+    name: popularity-contest
+    state: stopped
+    enabled: false
+  when:
+    - hardening_disable_popcon
+    - "'popularity-contest.service' in ansible_facts.services"
+  tags: [telemetry, popcon]
+
+# -----------------------------------------------------------------------------
+# 5. Canonical Livepatch
+# -----------------------------------------------------------------------------
+- name: "Livepatch | Check if binary exists"
+  ansible.builtin.stat:
+    path: /usr/bin/canonical-livepatch
+  register: livepatch_bin
+  when: hardening_disable_livepatch
+  tags: [telemetry, livepatch]
+
+- name: "Livepatch | Disable"
+  ansible.builtin.command: canonical-livepatch disable
+  when:
+    - hardening_disable_livepatch
+    - livepatch_bin.stat.exists
+  changed_when: true
+  tags: [telemetry, livepatch]
+
+# -----------------------------------------------------------------------------
+# 6. Unattended Upgrades
+# -----------------------------------------------------------------------------
+- name: "Unattended-upgrades | Stop and disable service"
+  ansible.builtin.systemd:
+    name: unattended-upgrades
+    state: stopped
+    enabled: false
+  when:
+    - hardening_disable_unattended_upgrades
+    - "'unattended-upgrades.service' in ansible_facts.services"
+  tags: [updates, unattended_upgrades]
+
+- name: "Unattended-upgrades | Write apt periodic config"
+  ansible.builtin.template:
+    src: 20auto-upgrades.j2
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: '0644'
+  when: hardening_disable_unattended_upgrades
+  tags: [updates, unattended_upgrades]
+
+# -----------------------------------------------------------------------------
+# 7. apt-daily timers
+# -----------------------------------------------------------------------------
+- name: "apt-daily | Stop and disable timers"
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+  when:
+    - hardening_disable_apt_timers
+    - item in ansible_facts.services
+  tags: [updates, apt_timers]
+
+# -----------------------------------------------------------------------------
+# 8. MOTD news beacons
+# -----------------------------------------------------------------------------
+- name: "MOTD | Check /etc/default/motd-news exists"
+  ansible.builtin.stat:
+    path: /etc/default/motd-news
+  register: motd_news_conf
+  when: hardening_disable_motd_beacons
+  tags: [telemetry, motd]
+
+- name: "MOTD | Disable motd-news in config"
+  ansible.builtin.lineinfile:
+    path: /etc/default/motd-news
+    regexp: '^ENABLED='
+    line: 'ENABLED=0'
+  when:
+    - hardening_disable_motd_beacons
+    - motd_news_conf.stat.exists
+  tags: [telemetry, motd]
+
+- name: "MOTD | Stop and disable motd-news timer"
+  ansible.builtin.systemd:
+    name: motd-news.timer
+    state: stopped
+    enabled: false
+  when:
+    - hardening_disable_motd_beacons
+    - "'motd-news.timer' in ansible_facts.services"
+  tags: [telemetry, motd]
+
+- name: "MOTD | Stat beacon scripts"
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: "{{ hardening_motd_scripts_to_disable }}"
+  register: motd_scripts_stat
+  when: hardening_disable_motd_beacons
+  tags: [telemetry, motd]
+
+- name: "MOTD | Remove execute bit from beacon scripts"
+  ansible.builtin.file:
+    path: "{{ item.stat.path }}"
+    mode: "a-x"
+  loop: "{{ motd_scripts_stat.results }}"
+  when:
+    - hardening_disable_motd_beacons
+    - item.stat.exists
+    - item.stat.executable
+  tags: [telemetry, motd]
+
+# -----------------------------------------------------------------------------
+# 9. Ubuntu Advantage / Pro telemetry
+# NOTE: `ua`/`pro config set` does NOT accept enable_telemetry as a valid key.
+# Valid keys are: http_proxy, https_proxy, apt_http_proxy, etc.
+# The correct approach is to disable the polling timers and zero the metering
+# interval in uaclient.conf directly.
+# -----------------------------------------------------------------------------
+- name: "Ubuntu Pro | Stop and disable ua/pro timers"
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop:
+    - ua-timer.timer
+    - ubuntu-advantage.timer
+  when:
+    - hardening_disable_ubuntu_pro_telemetry
+    - item in ansible_facts.services
+  tags: [telemetry, ubuntu_pro]
+
+- name: "Ubuntu Pro | Check /etc/ubuntu-advantage dir exists"
+  ansible.builtin.stat:
+    path: /etc/ubuntu-advantage/uaclient.conf
+  register: ua_client_conf
+  when: hardening_disable_ubuntu_pro_telemetry
+  tags: [telemetry, ubuntu_pro]
+
+- name: "Ubuntu Pro | Zero metering_timer in uaclient.conf"
+  ansible.builtin.lineinfile:
+    path: /etc/ubuntu-advantage/uaclient.conf
+    regexp: '^metering_timer:'
+    line: 'metering_timer: 0'
+  when:
+    - hardening_disable_ubuntu_pro_telemetry
+    - ua_client_conf.stat.exists
+  tags: [telemetry, ubuntu_pro]
+
+# -----------------------------------------------------------------------------
+# 10. Snapd telemetry
+# -----------------------------------------------------------------------------
+- name: "Snapd | Check if snap binary exists"
+  ansible.builtin.stat:
+    path: /usr/bin/snap
+  register: snap_bin
+  when: hardening_disable_snapd_telemetry
+  tags: [telemetry, snapd]
+
+- name: "Snapd | Hold auto-refresh for {{ hardening_snap_refresh_hold_days }} days"
+  ansible.builtin.command: >
+    snap set system
+    refresh.hold="{{ '%Y-%m-%dT%H:%M:%S+00:00' | strftime((ansible_date_time.epoch | int) + (hardening_snap_refresh_hold_days * 86400)) }}"
+  when:
+    - hardening_disable_snapd_telemetry
+    - snap_bin.stat.exists
+  changed_when: true
+  tags: [telemetry, snapd]
+
+- name: "Snapd | Disable store privacy"
+  ansible.builtin.command: snap set core privacy.store.enabled=false
+  when:
+    - hardening_disable_snapd_telemetry
+    - snap_bin.stat.exists
+  changed_when: true
+  tags: [telemetry, snapd]
+
+- name: "Snapd | Stop and disable snap-repair timer"
+  ansible.builtin.systemd:
+    name: snapd.snap-repair.timer
+    state: stopped
+    enabled: false
+  when:
+    - hardening_disable_snapd_telemetry
+    - snap_bin.stat.exists
+    - "'snapd.snap-repair.timer' in ansible_facts.services"
+  tags: [telemetry, snapd]
+
+# -----------------------------------------------------------------------------
+# 11. Kerneloops
+# -----------------------------------------------------------------------------
+- name: "Kerneloops | Stop and disable service"
+  ansible.builtin.systemd:
+    name: kerneloops
+    state: stopped
+    enabled: false
+  when:
+    - hardening_disable_kerneloops
+    - "'kerneloops.service' in ansible_facts.services"
+  tags: [telemetry, kerneloops]
+
+# -----------------------------------------------------------------------------
+# 12. NetworkManager connectivity check
+# -----------------------------------------------------------------------------
+- name: "NetworkManager | Check if conf.d dir exists"
+  ansible.builtin.stat:
+    path: /etc/NetworkManager
+  register: nm_dir
+  when: hardening_disable_nm_connectivity
+  tags: [network, nm_connectivity]
+
+- name: "NetworkManager | Ensure conf.d directory exists"
+  ansible.builtin.file:
+    path: /etc/NetworkManager/conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when:
+    - hardening_disable_nm_connectivity
+    - nm_dir.stat.exists
+  tags: [network, nm_connectivity]
+
+- name: "NetworkManager | Write connectivity-disable config"
+  ansible.builtin.template:
+    src: 99-disable-connectivity.conf.j2
+    dest: /etc/NetworkManager/conf.d/99-disable-connectivity.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: reload NetworkManager
+  when:
+    - hardening_disable_nm_connectivity
+    - nm_dir.stat.exists
+  tags: [network, nm_connectivity]
+
+- name: "systemd-networkd | Check networkd.conf exists"
+  ansible.builtin.stat:
+    path: /etc/systemd/networkd.conf
+  register: networkd_conf
+  when: hardening_disable_nm_connectivity
+  tags: [network, nm_connectivity]
+
+- name: "systemd-networkd | Disable CheckIfConnected"
+  ansible.builtin.blockinfile:
+    path: /etc/systemd/networkd.conf
+    block: |
+      [Network]
+      CheckIfConnected=no
+    marker: "# {mark} ANSIBLE MANAGED – disable connectivity check"
+  when:
+    - hardening_disable_nm_connectivity
+    - networkd_conf.stat.exists
+  tags: [network, nm_connectivity]
+
+# -----------------------------------------------------------------------------
+# 13. Geoclue (GeoIP / location)
+# -----------------------------------------------------------------------------
+- name: "Geoclue | Stop and disable service"
+  ansible.builtin.systemd:
+    name: geoclue
+    state: stopped
+    enabled: false
+  when:
+    - hardening_disable_geoclue
+    - "'geoclue.service' in ansible_facts.services"
+  tags: [telemetry, geoclue]
+
+# -----------------------------------------------------------------------------
+# 14. Zeitgeist (GNOME activity logger)
+# -----------------------------------------------------------------------------
+- name: "Zeitgeist | Check if daemon binary exists"
+  ansible.builtin.stat:
+    path: /usr/bin/zeitgeist-daemon
+  register: zeitgeist_bin
+  when: hardening_disable_zeitgeist
+  tags: [telemetry, zeitgeist]
+
+- name: "Zeitgeist | Quit daemon"
+  ansible.builtin.command: zeitgeist-daemon --quit
+  when:
+    - hardening_disable_zeitgeist
+    - zeitgeist_bin.stat.exists
+  changed_when: true
+  tags: [telemetry, zeitgeist]
+
+# -----------------------------------------------------------------------------
+# 15. Firefox telemetry policy
+# -----------------------------------------------------------------------------
+- name: "Firefox | Ensure policies directory exists"
+  ansible.builtin.file:
+    path: /etc/firefox/policies
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: hardening_apply_firefox_policy
+  tags: [telemetry, firefox]
+
+- name: "Firefox | Write managed policy (disables telemetry + studies)"
+  ansible.builtin.template:
+    src: firefox_policies.json.j2
+    dest: /etc/firefox/policies/policies.json
+    owner: root
+    group: root
+    mode: '0644'
+  when: hardening_apply_firefox_policy
+  tags: [telemetry, firefox]
+
+# -----------------------------------------------------------------------------
+# 16. Migrate apt repositories from http:// → https://
+# -----------------------------------------------------------------------------
+- name: "Repos | Ensure curl is installed (needed for HTTPS probe)"
+  ansible.builtin.apt:
+    name: curl
+    state: present
+    update_cache: false
+  when: hardening_migrate_repos_to_https
+  tags: [repos, https_migration]
+
+- name: "Repos | Collect all apt source files"
+  ansible.builtin.find:
+    paths:
+      - /etc/apt
+      - /etc/apt/sources.list.d
+    patterns:
+      - "sources.list"
+      - "*.list"
+      - "*.sources"
+    recurse: false
+  register: apt_source_files
+  when: hardening_migrate_repos_to_https
+  tags: [repos, https_migration]
+
+- name: "Repos | Read content of each source file"
+  ansible.builtin.slurp:
+    src: "{{ item.path }}"
+  loop: "{{ apt_source_files.files }}"
+  register: apt_source_contents
+  when: hardening_migrate_repos_to_https
+  tags: [repos, https_migration]
+
+- name: "Repos | Extract http:// URLs from source files"
+  ansible.builtin.set_fact:
+    http_repo_urls: >-
+      {{
+        apt_source_contents.results
+        | map(attribute='content')
+        | map('b64decode')
+        | join('\n')
+        | regex_findall('http://[^\s"\']+')
+        | reject('match', '.*(localhost|127\.).*')
+        | list
+        | unique
+      }}
+  when: hardening_migrate_repos_to_https
+  tags: [repos, https_migration]
+
+- name: "Repos | Probe HTTPS reachability for each http:// URL"
+  ansible.builtin.uri:
+    url: "{{ item | regex_replace('http://', 'https://') | regex_search('https://[^/]+(/[^/]+)?') }}"
+    method: HEAD
+    follow_redirects: safe
+    timeout: "{{ hardening_https_probe_timeout }}"
+    status_code: [200, 201, 301, 302, 403]
+    validate_certs: true
+  loop: "{{ http_repo_urls | default([]) }}"
+  register: https_probe_results
+  ignore_errors: true   # intentional: failure = skip, not abort
+  when:
+    - hardening_migrate_repos_to_https
+    - http_repo_urls is defined
+    - http_repo_urls | length > 0
+  tags: [repos, https_migration]
+
+- name: "Repos | Build list of URLs confirmed reachable over HTTPS"
+  ansible.builtin.set_fact:
+    confirmed_https_urls: >-
+      {{
+        https_probe_results.results
+        | selectattr('status', 'defined')
+        | selectattr('status', 'in', [200, 201, 301, 302, 403])
+        | map(attribute='item')
+        | list
+      }}
+  when:
+    - hardening_migrate_repos_to_https
+    - https_probe_results is defined
+  tags: [repos, https_migration]
+
+- name: "Repos | Back up source files before modification"
+  ansible.builtin.copy:
+    src: "{{ item.path }}"
+    dest: "{{ item.path }}.bak"
+    remote_src: true
+    force: false
+    owner: root
+    group: root
+    mode: preserve
+  loop: "{{ apt_source_files.files }}"
+  when:
+    - hardening_migrate_repos_to_https
+    - confirmed_https_urls is defined
+    - confirmed_https_urls | length > 0
+  tags: [repos, https_migration]
+
+- name: "Repos | Replace http:// with https:// for reachable URLs"
+  ansible.builtin.replace:
+    path: "{{ item[0].path }}"
+    regexp: "{{ item[1] | regex_escape() }}"
+    replace: "{{ item[1] | regex_replace('http://', 'https://') }}"
+    backup: false
+  loop: "{{ apt_source_files.files | product(confirmed_https_urls | default([])) | list }}"
+  notify: apt-get update
+  when:
+    - hardening_migrate_repos_to_https
+    - confirmed_https_urls is defined
+    - confirmed_https_urls | length > 0
+  tags: [repos, https_migration]
+
+- name: "Repos | Report URLs skipped (HTTPS unreachable)"
+  ansible.builtin.debug:
+    msg: "SKIPPED (HTTPS not reachable): {{ item.item }}"
+  loop: "{{ https_probe_results.results | default([]) }}"
+  when:
+    - hardening_migrate_repos_to_https
+    - https_probe_results is defined
+    - item.status is not defined or item.status not in [200, 201, 301, 302, 403]
+  tags: [repos, https_migration]

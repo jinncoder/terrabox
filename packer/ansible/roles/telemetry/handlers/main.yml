@@ -1,0 +1,11 @@
+---
+- name: reload NetworkManager
+  ansible.builtin.systemd:
+    name: NetworkManager
+    state: reloaded
+  ignore_errors: true
+
+- name: apt-get update
+  ansible.builtin.apt:
+    update_cache: true
+  ignore_errors: true

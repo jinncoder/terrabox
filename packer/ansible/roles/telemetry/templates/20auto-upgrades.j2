@@ -1,0 +1,3 @@
+{% for key, val in hardening_apt_periodic.items() %}
+APT::Periodic::{{ key }} "{{ val }}";
+{% endfor %}

@@ -1,0 +1,53 @@
+---
+# =============================================================================
+# Role variables – override in group_vars / host_vars as needed
+# =============================================================================
+
+# Packages to fully purge, dpkg-hold, and apt-pin at Priority -10.
+# Add/remove entries to control which packages are eliminated.
+# Set to [] to skip purging entirely.
+hardening_purge_packages:
+  - name: apport-symptoms
+  - name: apport
+  - name: whoopsie
+  - name: ubuntu-report
+  - name: unattended-upgrades
+  - name: snapd
+  - name: popularity-contest
+
+# Set to false to skip a section entirely
+hardening_disable_apport: true
+hardening_disable_whoopsie: true
+hardening_disable_ubuntu_report: true
+hardening_disable_popcon: true
+hardening_disable_livepatch: true
+hardening_disable_unattended_upgrades: true
+hardening_disable_apt_timers: true
+hardening_disable_motd_beacons: true
+hardening_disable_ubuntu_pro_telemetry: true
+hardening_disable_snapd_telemetry: true
+hardening_disable_kerneloops: true
+hardening_disable_nm_connectivity: true
+hardening_disable_geoclue: true
+hardening_disable_zeitgeist: true
+hardening_apply_firefox_policy: true
+hardening_migrate_repos_to_https: true
+
+# Snap refresh hold duration (passed to `snap set system refresh.hold`)
+hardening_snap_refresh_hold_days: 365
+
+# curl probe timeout in seconds (for HTTPS repo reachability check)
+hardening_https_probe_timeout: 8
+
+# MOTD scripts to strip execute permission from
+hardening_motd_scripts_to_disable:
+  - /etc/update-motd.d/50-motd-news
+  - /etc/update-motd.d/88-esm-announce
+  - /etc/update-motd.d/91-contract-ua-esm-status
+
+# apt periodic settings
+hardening_apt_periodic:
+  Update-Package-Lists: "0"
+  Download-Upgradeable-Packages: "0"
+  AutocleanInterval: "0"
+  Unattended-Upgrade: "0"

@@ -1,26 +1,42 @@
-- name: "Stop and disable {{ item.name }} service"
+---
+# tasks/purge.yml
+# Called via include_tasks loop. Each item has: { name: <package> }
+
+- name: "Purge | Check if {{ item.name }} service exists"
+  ansible.builtin.set_fact:
+    _svc_exists: "{{ (item.name + '.service') in ansible_facts.services }}"
+
+- name: "Purge | Stop and disable {{ item.name }} service"
   ansible.builtin.service:
     name: "{{ item.name }}"
     state: stopped
     enabled: false
-  ignore_errors: true
+  when: _svc_exists
 
-- name: "Remove {{ item.name }} package"
+- name: "Purge | Remove {{ item.name }} package"
   ansible.builtin.apt:
     name: "{{ item.name }}"
+    state: absent
+    purge: true
     force: true
     install_recommends: false
-    purge: true
-    state: absent
 
-- name: "Prevent {{ item.name }} from being upgraded"
+- name: "Purge | Check if {{ item.name }} is still known to dpkg"
+  ansible.builtin.command: dpkg -s {{ item.name }}
+  register: _dpkg_status
+  changed_when: false
+  failed_when: false
+
+- name: "Purge | Hold {{ item.name }} via dpkg selections"
   ansible.builtin.dpkg_selections:
     name: "{{ item.name }}"
     selection: hold
-  ignore_errors: true
+  when: _dpkg_status.rc == 0
 
-- name: "Set pref file for exclusion of {{ item.name }}"
+- name: "Purge | Write apt preferences pin for {{ item.name }}"
   ansible.builtin.template:
-    src: templates/apt.pref
+    src: apt.pref.j2
     dest: "/etc/apt/preferences.d/no-{{ item.name }}.pref"
-    mode: "644"
+    owner: root
+    group: root
+    mode: "0644"
