@@ -1,16 +1,16 @@
-- name: Install Oh-My-zsh for users
-  ansible.builtin.git:
-    repo: "https://github.com/robbyrussell/oh-my-zsh"
-    dest: "/home/{{ vm_user }}/.oh-my-zsh"
-    version: master
-    update: false
-    accept_newhostkey: true
-    depth: 1
-
 - name: Copy .zshrc
   ansible.builtin.copy:
     src: files/.zshrc
     dest: "/home/{{ vm_user }}/.zshrc"
+    mode: "640"
+    owner: "{{ vm_user }}"
+    group: "{{ vm_user }}"
+    force: true
+
+- name: Copy paradox.zsh
+  ansible.builtin.copy:
+    src: files/.paradox.zsh
+    dest: "/home/{{ vm_user }}/.paradox.zsh"
     mode: "775"
     owner: "{{ vm_user }}"
     group: "{{ vm_user }}"
