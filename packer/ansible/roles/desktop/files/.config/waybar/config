@@ -10,6 +10,7 @@
     "margin-bottom": 3,
     "reload_style_on_change": true,
     "modules-left": [
+      "custom/hostname",
       "tray",
       "sway/workspaces",
       "sway/window",
@@ -28,6 +29,11 @@
       "pulseaudio#output",
       "custom/power"
     ],
+    "custom/hostname": {
+      "format": "{}",
+      "exec": "hostname",
+      "interval": "once"
+    },
     "sway/workspaces": {
       "disable-scroll": false,
       "all-outputs": true,

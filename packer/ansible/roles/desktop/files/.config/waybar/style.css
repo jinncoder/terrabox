@@ -2,17 +2,16 @@
 @define-color fg #ecdad2;
 
 * {
-	border: none;
-	min-height: 0;
-
-	font-family: "Iosevka Term SS06";
-	font-size: 16px;
-	font-weight: 500;
+  border: none;
+  min-height: 0;
+  font-family: "Iosevka Term SS06";
+  font-size: 16px;
+  font-weight: 500;
 }
 
 window#waybar {
-	background: transparent;
-	color: @fg;
+  background: transparent;
+  color: @fg;
 }
 
 /* Floating pills */
@@ -26,66 +25,64 @@ window#waybar {
 #network,
 #pulseaudio,
 #tray {
-	background: @bg;
+  background: @bg;
 
-	border-radius: 2px;
+  border-radius: 2px;
 
-	margin: 4px;
-	padding-left: 14px;
-	padding-right: 14px;
+  margin: 4px;
+  padding-left: 14px;
+  padding-right: 14px;
 }
 
 #network.ethernet.disconnected {
-	background: transparent;
-	padding: 0;
-	margin: 0;
-	min-width: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
 }
 
 /* Workspaces */
 
 #workspaces {
-	padding-left: 6px;
-	padding-right: 6px;
+  padding-left: 6px;
+  padding-right: 6px;
 }
 
 #workspaces button {
-	border-radius: 2px;
-
-	margin: 2px;
-	padding-left: 10px;
-	padding-right: 10px;
-
-	color: rgba(236, 218, 210, 0.60);
+  border-radius: 2px;
+  margin: 2px;
+  padding-left: 10px;
+  padding-right: 10px;
+  color: rgba(236, 218, 210, 0.60);
 }
 
 #workspaces button.active {
-	background: rgba(255, 255, 255, 0.18);
-	color: #ffffff;
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
 }
 
 #workspaces button:hover {
-	background: rgba(255, 255, 255, 0.12);
-	color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
 }
 
 /* Focused window */
 
 #window {
-	color: #ecdad2;
-	font-style: italic;
+  color: #ecdad2;
+  font-style: italic;
 }
 
 #window.empty {
-	background: transparent;
-	padding: 0;
-	margin: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
 }
 
 /* Aurora accent */
 
 #clock {
-	color: #53efbd;
+  color: #53efbd;
 }
 
 /* Main modules */
@@ -96,34 +93,46 @@ window#waybar {
 #network,
 #pulseaudio,
 #tray {
-	color: #ecdad2;
+  color: #ecdad2;
 }
 
 #pulseaudio {
-	min-width: 90px;
+  min-width: 90px;
 }
 
 /* Tooltips */
 
 tooltip {
-	background: rgba(59, 82, 63, 0.95);
-	color: #ecdad2;
+  background: rgba(59, 82, 63, 0.95);
+  color: #ecdad2;
 
-	border-radius: 2px;
-	border: none;
+  border-radius: 2px;
+  border: none;
 }
 
 #custom-power {
-	font-family: "Iosevka Term SS06";
-	font-size: 28px;
-	background: rgba(40, 45, 40, 0.90);
+  font-family: "Iosevka Term SS06";
+  font-size: 28px;
+  background: rgba(40, 45, 40, 0.90);
 }
 
 #taskbar {
-	margin-left: 8px;
+  margin-left: 8px;
 }
 
 #taskbar button {
-	margin: 0 2px;
-	padding: 0 2px;
+  margin: 0 2px;
+  padding: 0 2px;
+}
+
+#custom-hostname {
+  background-color: rgba(26, 27, 38, 0.75);
+  color: #00ffc8;
+  border: 1px solid #00ffc8;
+  border-radius: 4px;
+  padding: 2px 10px;
+  margin: 4px 6px;
+  font-family: "Iosevka Term SS06";
+  text-shadow: 0 0 4px #00ffc8;
+  box-shadow: 0 0 8px rgba(0, 255, 200, 0.3);
 }
