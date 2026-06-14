@@ -114,6 +114,7 @@ tooltip {
   font-family: "Iosevka Term SS06";
   font-size: 28px;
   background: rgba(40, 45, 40, 0.90);
+  margin-right: 2px;
 }
 
 #taskbar {
