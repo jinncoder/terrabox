@@ -29,7 +29,7 @@ cd() {
 # Save lots of history
 HISTSIZE=10000
 SAVEHIST=1000000
-HISTFILE=$XDG_CACHE_HOME/zsh/history
+HISTFILE=$HOME/.zsh_history
 
 # Make sure everyone knows I use vim
 EDITOR=/usr/bin/vim
@@ -39,3 +39,5 @@ VISUAL=/usr/bin/vim
 if [ -d "$HOME/.local/bin" ] ; then
     PATH="$HOME/.local/bin:$PATH"
 fi
+
+LS_COLORS="di=1:fi=96:*.m=31:*.py=32:*.txt=36:*.out=35"
