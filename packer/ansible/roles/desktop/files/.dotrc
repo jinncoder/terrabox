@@ -50,3 +50,5 @@ function webout() {
   sudo iptables -I OUTPUT -p udp --dport 443 -j ACCEPT
   sudo iptables -I OUTPUT -p udp --dport 1337 -j ACCEPT
 }
+
+alias ls="ls --color=always"

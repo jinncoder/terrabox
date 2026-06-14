@@ -41,6 +41,7 @@
       SDL_VIDEODRIVER=wayland
       MOZ_ENABLE_WAYLAND=1
       EDITOR=vim
+      LS_COLORS="di=1:fi=96:*.m=31:*.py=32:*.txt=36:*.out=35"
     marker: "# {mark} ANSIBLE MANAGED WAYLAND ENV VARS"
     create: yes
     owner: root
