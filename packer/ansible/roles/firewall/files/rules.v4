@@ -16,7 +16,6 @@
 -A LOG_DROP -j LOG --log-level 6 --log-prefix "IPTABLES:DROP: "
 -A LOG_DROP -j DROP
 
-
 # Acceptable UDP traffic
 
 # Acceptable TCP traffic
@@ -64,6 +63,10 @@
 -A UDP -j LOG_DROP
 -A TCP -j LOG_DROP
 -A ICMP -j LOG_DROP
+
+# Log all output...
+-I OUTPUT 1 -m owner --uid-owner 1000 -j LOG --log-prefix "ALL_USER: "
+-I OUTPUT 1 -m owner --uid-owner 0 -j LOG --log-prefix "ALL_ROOT: "
 
 # Commit the changes
 COMMIT
