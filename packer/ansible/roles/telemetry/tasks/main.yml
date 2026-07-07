@@ -35,16 +35,6 @@
 # -----------------------------------------------------------------------------
 # 1. Apport – crash/error reporting daemon
 # -----------------------------------------------------------------------------
-- name: "Apport | Stop and disable service"
-  ansible.builtin.systemd:
-    name: apport
-    state: stopped
-    enabled: false
-  when:
-    - hardening_disable_apport
-    - "'apport.service' in ansible_facts.services"
-  tags: [telemetry, apport]
-
 - name: "Apport | Check /etc/default/apport exists"
   ansible.builtin.stat:
     path: /etc/default/apport
@@ -62,19 +52,20 @@
     - apport_default.stat.exists
   tags: [telemetry, apport]
 
-# -----------------------------------------------------------------------------
-# 2. Whoopsie – error report uploader
-# -----------------------------------------------------------------------------
-- name: "Whoopsie | Stop and disable service"
+- name: "Apport | Stop and disable service"
   ansible.builtin.systemd:
-    name: whoopsie
+    name: apport
     state: stopped
     enabled: false
   when:
-    - hardening_disable_whoopsie
-    - "'whoopsie.service' in ansible_facts.services"
-  tags: [telemetry, whoopsie]
+    - hardening_disable_apport
+    - apport_default.stat.exists
+  tags: [telemetry, apport]
 
+
+# -----------------------------------------------------------------------------
+# 2. Whoopsie – error report uploader
+# -----------------------------------------------------------------------------
 - name: "Whoopsie | Check /etc/default/whoopsie exists"
   ansible.builtin.stat:
     path: /etc/default/whoopsie
@@ -91,6 +82,17 @@
     - hardening_disable_whoopsie
     - whoopsie_default.stat.exists
   tags: [telemetry, whoopsie]
+
+- name: "Whoopsie | Stop and disable service"
+  ansible.builtin.systemd:
+    name: whoopsie
+    state: stopped
+    enabled: false
+  when:
+    - hardening_disable_whoopsie
+    - whoopsie_default.stat.exists
+  tags: [telemetry, whoopsie]
+
 
 # -----------------------------------------------------------------------------
 # 3. ubuntu-report
@@ -157,29 +159,6 @@
     - livepatch_bin.stat.exists
   changed_when: true
   tags: [telemetry, livepatch]
-
-# -----------------------------------------------------------------------------
-# 6. Unattended Upgrades
-# -----------------------------------------------------------------------------
-- name: "Unattended-upgrades | Stop and disable service"
-  ansible.builtin.systemd:
-    name: unattended-upgrades
-    state: stopped
-    enabled: false
-  when:
-    - hardening_disable_unattended_upgrades
-    - "'unattended-upgrades.service' in ansible_facts.services"
-  tags: [updates, unattended_upgrades]
-
-- name: "Unattended-upgrades | Write apt periodic config"
-  ansible.builtin.template:
-    src: 20auto-upgrades.j2
-    dest: /etc/apt/apt.conf.d/20auto-upgrades
-    owner: root
-    group: root
-    mode: '0644'
-  when: hardening_disable_unattended_upgrades
-  tags: [updates, unattended_upgrades]
 
 # -----------------------------------------------------------------------------
 # 7. apt-daily timers

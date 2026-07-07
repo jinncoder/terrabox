@@ -1,12 +1,13 @@
 - name: Setup Zig and ZLS
   vars:
     zig_version: "0.16.0"
+    zls_version: "0.16.0"
     zig_arch: "x86_64-linux"
     zig_dir: "/usr/local/zig-{{ zig_arch }}-{{ zig_version }}"
     zig_tar: "zig-{{ zig_arch }}-{{ zig_version }}.tar.xz"
     zig_url: "https://ziglang.org/download/{{ zig_version }}/{{ zig_tar }}"
     zls_tar: "zls-{{ zig_arch }}.tar.xz"
-    zls_url: "https://github.com/zigtools/zls/releases/download/{{ zig_version }}/{{ zls_tar }}"
+    zls_url: "https://github.com/zigtools/zls/releases/download/{{ zls_version }}/{{ zls_tar }}"
   block:
     - name: Check if zig exists
       ansible.builtin.stat:
