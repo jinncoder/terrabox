@@ -1,0 +1,6 @@
+- name: Install DefaultCreds-cheat-sheet.git
+  ansible.builtin.include_tasks: roles/python/tasks/bootstrap.yml
+  loop:
+    - name: creds
+      repo: https://github.com/ihebski/DefaultCreds-cheat-sheet.git
+      pipx: true
