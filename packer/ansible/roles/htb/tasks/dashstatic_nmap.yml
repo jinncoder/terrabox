@@ -1,0 +1,19 @@
+- name: Check if nmap exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/nmap
+  register: nmap_bin
+
+- name: Download nmap
+  ansible.builtin.get_url:
+    url: "https://github.com/dashstatic/nmap/releases/download/v7.99.0/nmap.tgz"
+    dest: /tmp/nmap.tgz
+    mode: "0600"
+  when: not nmap_bin.stat.exists
+
+- name: Extract nmap
+  ansible.builtin.unarchive:
+    src: /tmp/nmap.tgz
+    dest: /usr/local
+    remote_src: true
+  when: not nmap_bin.stat.exists
+

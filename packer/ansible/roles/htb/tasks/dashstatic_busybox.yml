@@ -1,0 +1,5 @@
+- name: Download static busybox
+  ansible.builtin.get_url:
+    url: https://github.com/dashstatic/busybox/releases/download/v1.37.0/busybox
+    dest: /usr/local/bin/busybox
+    mode: "0755"

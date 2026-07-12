@@ -1,0 +1,5 @@
+- name: Download static cryptsetup
+  ansible.builtin.get_url:
+    url: https://github.com/dashstatic/cryptsetup/releases/download/v2.7.5/cryptsetup
+    dest: /usr/local/bin/cryptsetup
+    mode: "0755"

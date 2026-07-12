@@ -1,0 +1,6 @@
+- name: Install BloodyAD
+  ansible.builtin.include_tasks: roles/python/tasks/bootstrap.yml
+  loop:
+    - name: bloodyad
+      repo: https://github.com/CravateRouge/bloodyAD.git
+      pipx: true

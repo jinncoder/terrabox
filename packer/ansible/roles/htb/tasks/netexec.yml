@@ -1,6 +1,30 @@
 - name: Install NetExec
-  ansible.builtin.include_tasks: roles/python/tasks/bootstrap.yml
-  loop:
-    - name: netexec
-      repo: https://github.com/Pennyw0rth/NetExec.git
-      pipx: true
+  ansible.builtin.git:
+    repo: https://github.com/Pennyw0rth/NetExec.git
+    dest: "{{ vm_tool_base }}/netexec"
+    depth: 1
+
+- name: Build NetExec docker image
+  community.docker.docker_image:
+    build:
+      path: "{{ vm_tool_base }}/netexec"
+    name: netexec
+    tag: local
+    source: build
+
+- name: Copy entrypoint script
+  ansible.builtin.copy:
+    src: files/netexec/netexec.sh
+    dest: "{{ vm_tool_base }}/netexec/"
+    mode: "0755"
+    owner: "{{ vm_user }}"
+    group: "{{ vm_user }}"
+    force: true
+
+- name: Symlink netexec entrypoint
+  ansible.builtin.file:
+    src: "{{ vm_tool_base }}/netexec/netexec.sh"
+    dest: /usr/local/bin/netexec
+    state: link
+    owner: "{{ vm_user }}"
+    group: "{{ vm_user }}"

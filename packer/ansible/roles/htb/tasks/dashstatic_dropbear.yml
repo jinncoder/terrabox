@@ -1,0 +1,19 @@
+- name: Check if dropbear exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/dropbear
+  register: dropbear_bin
+
+- name: Download dropbear
+  ansible.builtin.get_url:
+    url: "https://github.com/dashstatic/dropbear/releases/download/v2026.91/dropbear.tgz"
+    dest: /tmp/dropbear.tgz
+    mode: "0600"
+  when: not dropbear_bin.stat.exists
+
+- name: Extract dropbear
+  ansible.builtin.unarchive:
+    src: /tmp/dropbear.tgz
+    dest: /usr/local
+    remote_src: true
+  when: not dropbear_bin.stat.exists
+

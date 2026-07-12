@@ -3,10 +3,14 @@
 
 - name: Setup adidnsdump
   ansible.builtin.include_tasks: adidnsdump.yml
+- name: Setup awinrm
+  ansible.builtin.include_tasks: awinrm.yml
 - name: Setup bloodhound-python
   ansible.builtin.include_tasks: bloodhound-python.yml
 - name: Setup bloodhound
   ansible.builtin.include_tasks: bloodhound.yml
+- name: Setup bloodyad
+  ansible.builtin.include_tasks: bloodyad.yml
 - name: Setup burpsuite
   ansible.builtin.include_tasks: burpsuite.yml
 - name: Setup certipy
@@ -17,6 +21,24 @@
   ansible.builtin.include_tasks: clrvoyance.yml
 - name: Setup coercer
   ansible.builtin.include_tasks: coercer.yml
+- name: Setup dashstatic_busybox
+  ansible.builtin.include_tasks: dashstatic_busybox.yml
+- name: Setup dashstatic_cryptsetup
+  ansible.builtin.include_tasks: dashstatic_cryptsetup.yml
+- name: Setup dashstatic_curl
+  ansible.builtin.include_tasks: dashstatic_curl.yml
+- name: Setup dashstatic_dropbear
+  ansible.builtin.include_tasks: dashstatic_dropbear.yml
+- name: Setup dashstatic_krb5
+  ansible.builtin.include_tasks: dashstatic_krb5.yml
+- name: Setup dashstatic_nmap
+  ansible.builtin.include_tasks: dashstatic_nmap.yml
+- name: Setup dashstatic_openssh
+  ansible.builtin.include_tasks: dashstatic_openssh.yml
+- name: Setup dashstatic_rsync
+  ansible.builtin.include_tasks: dashstatic_rsync.yml
+- name: Setup dashstatic_socat
+  ansible.builtin.include_tasks: dashstatic_socat.yml
 - name: Setup defendercheck
   ansible.builtin.include_tasks: defendercheck.yml
 - name: Setup donpapi
@@ -31,6 +53,8 @@
   ansible.builtin.include_tasks: impacket.yml
 - name: Setup johntheripper
   ansible.builtin.include_tasks: johntheripper.yml
+- name: Setup kerberoast
+  ansible.builtin.include_tasks: kerberoast.yml
 - name: Setup kerbrute
   ansible.builtin.include_tasks: kerbrute.yml
 - name: Setup keytabextract
@@ -45,6 +69,8 @@
   ansible.builtin.include_tasks: ligolong.yml
 - name: Setup lsassy
   ansible.builtin.include_tasks: lsassy.yml
+- name: Setup msldap
+  ansible.builtin.include_tasks: msldap.yml
 - name: Setup neo
   ansible.builtin.include_tasks: neo.yml
 - name: Setup netexec
@@ -57,8 +83,6 @@
   ansible.builtin.include_tasks: pkinittools.yml
 - name: Setup pylaps
   ansible.builtin.include_tasks: pylaps.yml
-- name: Setup pypykatz
-  ansible.builtin.include_tasks: pypykatz.yml
 - name: Setup pywhisker
   ansible.builtin.include_tasks: pywhisker.yml
 - name: Setup responder
@@ -77,8 +101,12 @@
   ansible.builtin.include_tasks: sharpyshell.yml
 - name: Setup sigmapotato
   ansible.builtin.include_tasks: sigmapotato.yml
+- name: Setup sliver
+  ansible.builtin.include_tasks: sliver.yml
 - name: Setup sqlmap
   ansible.builtin.include_tasks: sqlmap.yml
+- name: Setup sx
+  ansible.builtin.include_tasks: sx.yml
 - name: Setup weevely
   ansible.builtin.include_tasks: weevely.yml
 - name: Setup wesng

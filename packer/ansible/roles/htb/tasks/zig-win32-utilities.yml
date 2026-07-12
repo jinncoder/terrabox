@@ -10,4 +10,4 @@
     cmd: make
     chdir: "{{ vm_tool_base }}/zig-win32-utilities"
   environment:
-    - PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/usr/local/go/bin:/usr/local/zig-x86_64-linux-0.14.1
+    - PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/usr/local/go/bin:/usr/local/zig-x86_64-linux-0.16.0

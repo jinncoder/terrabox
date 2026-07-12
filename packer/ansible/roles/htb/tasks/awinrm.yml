@@ -1,0 +1,6 @@
+- name: Install awinrm
+  ansible.builtin.include_tasks: roles/python/tasks/bootstrap.yml
+  loop:
+    - name: awinrm
+      repo: https://github.com/skelsec/awinrm.git
+      pipx: true

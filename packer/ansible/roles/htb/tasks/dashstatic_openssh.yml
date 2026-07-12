@@ -1,0 +1,19 @@
+- name: Check if openssh exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/ssh
+  register: openssh_bin
+
+- name: Download openssh
+  ansible.builtin.get_url:
+    url: "https://github.com/dashstatic/openssh-portable/releases/download/v10.3.1/openssh.tgz"
+    dest: /tmp/openssh.tgz
+    mode: "0600"
+  when: not openssh_bin.stat.exists
+
+- name: Extract openssh
+  ansible.builtin.unarchive:
+    src: /tmp/openssh.tgz
+    dest: /usr/local
+    remote_src: true
+  when: not openssh_bin.stat.exists
+

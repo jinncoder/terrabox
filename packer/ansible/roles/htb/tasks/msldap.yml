@@ -1,0 +1,6 @@
+- name: Install MS-LDAP
+  ansible.builtin.include_tasks: roles/python/tasks/bootstrap.yml
+  loop:
+    - name: msldap
+      repo: https://github.com/skelsec/msldap.git
+      pipx: true

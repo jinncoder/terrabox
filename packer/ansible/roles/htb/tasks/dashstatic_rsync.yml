@@ -1,0 +1,19 @@
+- name: Check if rsync exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/rsync
+  register: rsync_bin
+
+- name: Download rsync
+  ansible.builtin.get_url:
+    url: "https://github.com/dashstatic/rsync/releases/download/v3.4.3/rsync.tgz"
+    dest: /tmp/rsync.tgz
+    mode: "0600"
+  when: not rsync_bin.stat.exists
+
+- name: Extract rsync
+  ansible.builtin.unarchive:
+    src: /tmp/rsync.tgz
+    dest: /usr/local
+    remote_src: true
+  when: not rsync_bin.stat.exists
+

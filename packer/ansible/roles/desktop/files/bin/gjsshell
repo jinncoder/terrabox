@@ -1,0 +1,300 @@
+#!/usr/bin/env -S uv run --script
+#
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#   "websockets",       # https://websockets.readthedocs.io/en/stable/intro/tutorial1.html
+#   "prompt_toolkit",   # https://python-prompt-toolkit.readthedocs.io/en/3.0.52/pages/asking_for_input.html
+#   "cryptography",     # https://cryptography.io
+# ]
+# ///
+
+import asyncio
+import datetime
+import functools
+import pathlib
+import platform
+import ssl
+import sys
+
+from cryptography import x509
+from cryptography.x509.oid import NameOID
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
+
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import FileHistory
+
+from websockets.asyncio.server import serve
+from websockets.exceptions import ConnectionClosedError
+
+# https://gjs-docs.gnome.org/gjs/
+client = """#!/usr/bin/env gjs
+// reference: https://gitlab.gnome.org/GNOME/gjs/-/blob/HEAD/examples/websocket-client.js
+
+imports.gi.versions.Soup = '3.0';
+
+const { Soup, GLib, Gio } = imports.gi;
+
+const loop = GLib.MainLoop.new(null, false);
+
+const session = new Soup.Session();
+
+const message = new Soup.Message({
+    method: 'GET',
+    uri: GLib.Uri.parse('wss://XXX:YYY/callmemaybe', GLib.UriFlags.NONE),
+});
+
+message.connect('accept-certificate', (message, tls_certificate, tls_errors) => {
+    return true;
+});
+
+const decoder = new TextDecoder();
+
+session.websocket_connect_async(message, null, [], null, null, websocket_connect_async_callback);
+
+function readStreamAsPromise(connection, stream, label) {
+    return new Promise((resolve) => {
+        function loop(s) {
+            s.read_line_async(GLib.PRIORITY_LOW, null, (source, result) => {
+                try {
+                    const [line] = source.read_line_finish_utf8(result);
+                    if (line !== null) {
+                        connection.send_text(line);
+                        loop(source);
+                    } else {
+                        resolve();
+                    }
+                } catch (e) {
+                    logError(e);
+                    resolve();
+                }
+            });
+        }
+        loop(stream);
+    });
+}
+
+function websocket_connect_async_callback(_session, res) {
+    let connection;
+
+    try {
+        connection = session.websocket_connect_finish(res);
+    } catch (err) {
+        logError(err);
+        loop.quit();
+        return;
+    }
+
+    connection.connect('closed', () => {
+        log('closed');
+        loop.quit();
+    });
+
+    connection.connect('error', (self, err) => {
+        logError(err);
+        loop.quit();
+    });
+
+    connection.connect('message', async (self, type, data) => {
+        if (type !== Soup.WebsocketDataType.TEXT)
+            return;
+
+        const cmd = decoder.decode(data.toArray());
+
+        if (cmd === "exit") {
+            connection.close(Soup.WebsocketCloseCode.NORMAL, null);
+            return;
+        }
+
+        log(`running: ${cmd}`);
+
+        try {
+            const [parsed, argv] = GLib.shell_parse_argv(cmd);
+            log(`ARGV: ${argv}`);
+
+            if (!parsed) {
+                connection.send_text(`Failed to parse ${cmd}`);
+                return;
+            }
+
+            try {
+                // https://docs.gtk.org/gio/ctor.Subprocess.new.html
+                const proc = Gio.Subprocess.new(
+                    argv,
+                    Gio.SubprocessFlags.STDERR_PIPE | Gio.SubprocessFlags.STDOUT_PIPE
+                );
+
+                const stdoutStream = new Gio.DataInputStream({
+                    base_stream: proc.get_stdout_pipe(),
+                    close_base_stream: true,
+                });
+
+                const stderrStream = new Gio.DataInputStream({
+                    base_stream: proc.get_stderr_pipe(),
+                    close_base_stream: true,
+                });
+
+                const cancellable = new Gio.Cancellable();
+
+                await Promise.all([
+                    Promise.all([
+                        readStreamAsPromise(connection, stdoutStream, 'STDOUT'),
+                        readStreamAsPromise(connection, stderrStream, 'STDERR'),
+                    ]),
+                    proc.wait_async(cancellable, null),
+                ]);
+
+                connection.send_text(`PROC_STATUS:${proc.get_successful()}`);
+
+            } catch (e) {
+                logError(e);
+                connection.send_text(`PROC_STATUS:${e}`);
+            }
+        } catch (e) {
+            logError(e);
+            connection.send_text(`PROC_STATUS:${e}`);
+        }
+    });
+
+    log('open');
+}
+
+loop.run();
+"""
+
+
+def generate_self_signed_cert(
+    pem_file=pathlib.PosixPath("./server.pem"), hostname=platform.node()
+):
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "Luna"),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "Lovell"),
+            x509.NameAttribute(NameOID.LOCALITY_NAME, "New Hague"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Rocinante"),
+            x509.NameAttribute(NameOID.COMMON_NAME, hostname),
+        ]
+    )
+
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(private_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.datetime.now(datetime.timezone.utc))
+        .not_valid_after(
+            datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365)
+        )
+        .add_extension(
+            x509.SubjectAlternativeName([x509.DNSName(hostname)]),
+            critical=False,
+        )
+        .sign(private_key, hashes.SHA256())
+    )
+
+    pem_file.write_bytes(
+        private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    )
+
+    with pem_file.open("ab") as fh:
+        fh.write(cert.public_bytes(serialization.Encoding.PEM))
+
+
+async def hello(websocket, stop):
+    match websocket.request.path:
+        case "/callmemaybe":
+            await callmemaybe(websocket, stop)
+        case _:
+            return  # k'bye'lil'scanner'boi
+
+
+async def callmemaybe(websocket, stop):
+    session = PromptSession(history=FileHistory(".gjs-history"))
+
+    text = ""
+
+    while True:
+        try:
+            text = await session.prompt_async("$ ")
+
+            text = text.strip()
+
+            if not text:
+                continue
+
+            if text == "exit":
+                break
+
+            await websocket.send(text)
+
+            async for message in websocket:
+                if message.startswith("PROC_STATUS:"):
+                    break
+
+                print(message)
+        except EOFError:
+            print()
+            continue
+        except KeyboardInterrupt:
+            text = "exit"
+            break
+        except ConnectionClosedError:
+            print("client died")
+            break
+
+    if text == "exit":
+        try:
+            await websocket.send("exit")
+        except ConnectionClosedError:
+            pass
+        finally:
+            stop.cancel()
+
+
+async def main(ipport):
+    ip, port = ipport.split(":")
+
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    pem_file = pathlib.Path(__file__).with_name("server.pem")
+
+    if not pem_file.exists():
+        generate_self_signed_cert(pem_file)
+
+    ssl_context.load_cert_chain(pem_file)
+
+    stop = asyncio.get_running_loop().create_future()
+
+    # all this stupid w/ functool just to pass along stop...
+    bound_handler = functools.partial(hello, stop=stop)
+
+    async with serve(bound_handler, ip, int(port), ssl=ssl_context) as _:
+        try:
+            with open("client.js", "w") as fh:
+                fh.write(client.replace("XXX", ip).replace("YYY", str(port)))
+
+            print("Generated ./client.js")
+            print(f"Listening with {ip} on {port}")
+            await stop
+        except asyncio.exceptions.CancelledError:
+            print("\n")
+
+
+if __name__ == "__main__":
+    try:
+        if len(sys.argv) <= 1:
+            print(f"{sys.argv[0]} ip:port")
+            exit(1)
+
+        asyncio.run(main(sys.argv[1]))
+    except KeyboardInterrupt:
+        print("\n")

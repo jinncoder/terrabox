@@ -1,0 +1,19 @@
+- name: Check if socat exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/socat
+  register: socat_bin
+
+- name: Download socat
+  ansible.builtin.get_url:
+    url: "https://github.com/dashstatic/socat/releases/download/v1.8.1.1/socat.tgz"
+    dest: /tmp/socat.tgz
+    mode: "0600"
+  when: not socat_bin.stat.exists
+
+- name: Extract socat
+  ansible.builtin.unarchive:
+    src: /tmp/socat.tgz
+    dest: /usr/local
+    remote_src: true
+  when: not socat_bin.stat.exists
+

@@ -1,0 +1,19 @@
+- name: Check if krb5 exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/krb5
+  register: krb5_bin
+
+- name: Download krb5
+  ansible.builtin.get_url:
+    url: "https://github.com/dashstatic/krb5/releases/download/v1.22.2/krb5.tgz"
+    dest: /tmp/krb5.tgz
+    mode: "0600"
+  when: not krb5_bin.stat.exists
+
+- name: Extract krb5
+  ansible.builtin.unarchive:
+    src: /tmp/krb5.tgz
+    dest: /usr/local
+    remote_src: true
+  when: not krb5_bin.stat.exists
+

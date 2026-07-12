@@ -1,4 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 cd `mktemp -d`
-wget $(curl -s https://api.github.com/repos/obsidianmd/obsidian-releases/releases/latest | grep "browser_download_url.*deb" | grep -v "arm64" | cut -d : -f 2,3 | tr -d \") && apt-get install -qq ./obsidian*.deb
+
+wget "https://github.com/obsidianmd/obsidian-releases/releases/download/v1.12.7/obsidian_1.12.7_amd64.deb" && apt-get install -y -qq ./obsidian*.deb
+

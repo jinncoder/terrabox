@@ -1,0 +1,312 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "impacket",
+#     "rich"
+# ]
+# ///
+
+import argparse
+import csv
+import json
+from io import StringIO
+from configparser import ConfigParser
+
+from impacket.smbconnection import SMBConnection
+from impacket.dcerpc.v5 import transport, samr
+from impacket.examples.utils import parse_target
+
+from rich import print
+from rich.console import Console
+from rich.table import Table
+from rich.markup import escape
+from rich.traceback import install
+
+install(show_locals=True, suppress=[])
+
+# Interesting privileges to hunt
+INTERESTING_PRIVS = {
+    'SeEnableDelegationPrivilege',
+    'SeDebugPrivilege',
+    'SeTakeOwnershipPrivilege',
+    'SeBackupPrivilege',
+    'SeRestorePrivilege',
+    'SeImpersonatePrivilege',
+    'SeTcbPrivilege',
+}
+
+# Built-in default SIDs to ignore
+
+console = Console()
+sid_cache = {
+    # Well-known SIDs
+    'S-1-0-0': 'NULL SID',
+    'S-1-1-0': 'Everyone',
+    'S-1-2-0': 'Local',
+    'S-1-2-1': 'Console Logon',
+    'S-1-3-0': 'Creator Owner ID',
+    'S-1-3-1': 'Creator Group ID',
+    'S-1-3-2': 'Creator Owner Server',
+    'S-1-3-3': 'Creator Group Server',
+    'S-1-5-1': 'Dialup',
+    'S-1-5-2': 'Network',
+    'S-1-5-3': 'Batch',
+    'S-1-5-4': 'Interactive',
+    'S-1-5-6': 'Service',
+    'S-1-5-7': 'Anonymous',
+    'S-1-5-8': 'Proxy',
+    'S-1-5-9': 'Enterprise Domain Controllers',
+    'S-1-5-10': 'Self',
+    'S-1-5-11': 'Authenticated Users',
+    'S-1-5-12': 'Restricted Code',
+    'S-1-5-13': 'Terminal Server Users',
+    'S-1-5-14': 'Remote Interactive Logon',
+    'S-1-5-15': 'This Organization',
+    'S-1-5-17': 'IUSR (IIS)',
+    'S-1-5-18': 'Local System',
+    'S-1-5-19': 'Local Service',
+    'S-1-5-20': 'Network Service',
+
+    # Built-in Groups (S-1-5-32-...)
+    'S-1-5-32-544': 'Administrators',
+    'S-1-5-32-545': 'Users',
+    'S-1-5-32-546': 'Guests',
+    'S-1-5-32-547': 'Power Users',
+    'S-1-5-32-548': 'Account Operators',
+    'S-1-5-32-549': 'Server Operators',
+    'S-1-5-32-550': 'Print Operators',
+    'S-1-5-32-551': 'Backup Operators',
+    'S-1-5-32-552': 'Replicators',
+    'S-1-5-32-554': 'Pre-Windows 2000 Compatible Access',
+    'S-1-5-32-555': 'Remote Desktop Users',
+    'S-1-5-32-556': 'Network Configuration Operators',
+    'S-1-5-32-557': 'Incoming Forest Trust Builders',
+    'S-1-5-32-558': 'Performance Monitor Users',
+    'S-1-5-32-559': 'Performance Log Users',
+    'S-1-5-32-560': 'Windows Authorization Access Group',
+    'S-1-5-32-561': 'Terminal Server License Servers',
+    'S-1-5-32-562': 'Distributed COM Users',
+    'S-1-5-32-569': 'Cryptographic Operators',
+    'S-1-5-32-573': 'Event Log Readers',
+    'S-1-5-32-574': 'Certificate Service DCOM Access',
+    'S-1-5-32-575': 'RDS Remote Access Servers',
+    'S-1-5-32-576': 'RDS Endpoint Servers',
+    'S-1-5-32-577': 'RDS Management Servers',
+    'S-1-5-32-578': 'Hyper-V Administrators',
+    'S-1-5-32-579': 'Access Control Assistance Operators',
+    'S-1-5-32-580': 'Remote Management Users',
+
+    # Common NT Service accounts (optional, these vary)
+    'S-1-5-80-0': 'NT SERVICE\\TrustedInstaller',
+    # Note: Actual NT SERVICE SIDs follow a more complex format and are better resolved dynamically
+}
+
+DEFAULT_SIDS = set(sid_cache.keys())
+
+def resolve_sid_via_samr(dce, domain_handle, domain_sid, sid_str):
+    if sid_str in sid_cache:
+        return sid_cache[sid_str]
+
+    try:
+        # bleh
+        sid_parts = sid_str.split('-')
+        sid_domain_part = '-'.join(sid_parts[:-1])
+        rid = int(sid_parts[-1])
+
+        if sid_domain_part != domain_sid.formatCanonical():
+            print(f"[-] SID {sid_str} does not belong to domain with SID: {domain_sid.formatCanonical()})")
+            return "UNKNOWN"
+
+        try: # try RID lookup for domain...
+            sid_obj = samr.hSamrLookupIdsInDomain(dce, domain_handle, [rid])
+            name_info = sid_obj['Names'][0]
+            resolved = f"{name_info['Name']} ({name_info['Use']})"
+            sid_cache[sid_str] = resolved
+            return resolved
+        except DCERPCException as e:
+            print(f"[-] RID {rid} not found in domain {domain_name}: {e}")
+            return "UNKNOWN"
+
+    except Exception:
+        return "UNKNOWN"
+
+def list_gpos(smb, share, base_path):
+    try:
+        entries = smb.listPath(share, f"{base_path}\\*")
+        return [entry.get_longname() for entry in entries if entry.is_directory() and entry.get_longname() not in ['.', '..']]
+    except Exception as e:
+        console.print(f"[bold red][-] Failed to list GPOs: {e}[/]")
+        return []
+
+def parse_gpttmpl(dce, domain_handle, domain_sid, smb, share, path, domain_name, all_rows, kerberos, kdc_host):
+    file_path = f"{path}\\Machine\\Microsoft\\Windows NT\\SecEdit\\GptTmpl.inf"
+
+    class WTF:# b/c wtf not - see note below: shit API
+        def __init__(self):
+            self.content = b""
+
+        def callback(self, chunk):
+            self.content += chunk
+
+        def __str__(self):
+            return bytes(self.content.decode('utf-16-le'), 'utf-8').decode('utf-8-sig')
+
+    chunkMcFunk = WTF()
+
+    # TODO: readfile -> vs. connecttree everycall...crap API usage :-P
+    smb.getFile(share, file_path, chunkMcFunk.callback, shareAccessMode = None)
+    # because windows is shitty - data is encoded utf-16-le, however - for gpt files - a utf-8-sig (BOM) is introduced at SOF
+    content = str(chunkMcFunk)
+
+    if '[Privilege Rights]' not in content:
+        print(f"[-] Skipping {file_path}")
+        return
+
+    parser = ConfigParser()
+    parser.optionxform = str # make 'key/vales' case-sensitive - keep that fuckery at bay...
+    parser.read_string(content)
+
+    for right in parser['Privilege Rights']:
+        if right not in INTERESTING_PRIVS:# TODO: --all-privs?
+            continue
+
+        sid_list = parser['Privilege Rights'][right].split(',')
+
+        for sid in sid_list:
+            sid = sid.strip('* ').strip()
+
+            if not sid: # wtf
+                continue
+
+            all_rows.append({
+                "GPO": file_path.split("\\")[2],
+                "Privilege": right,
+                "SID": sid,
+                "Resolved": resolve_sid_via_samr(dce, domain_handle, domain_sid, sid),
+                "NonDefault": sid not in DEFAULT_SIDS,
+            })
+
+def export_to_json(rows, path):
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(rows, f, indent=2)
+    console.print(f"[green][+] Exported JSON to {path}[/]")
+
+def export_to_csv(rows, path):
+    with open(path, 'w', newline='', encoding='utf-8') as csvfile:
+        fieldnames = ["GPO", "Privilege", "SID", "Resolved", "NonDefault"]
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    console.print(f"[green][+] Exported CSV to {path}[/]")
+
+def main():
+    parser = argparse.ArgumentParser(description="Enumerate dangerous GPO-assigned privileges over SMB with rich output")
+    parser.add_argument("--target", required=True, help="[[domain/]username[:password]@]<targetName or address>")
+    parser.add_argument("--hashes", help="LM:NT hashes", default=None)
+    parser.add_argument("--kerberos", action="store_true", help="Use Kerberos authentication (KRB5CCNAME or TGT)")
+    parser.add_argument("--kdc-host", help="KDC IP or FQDN (needed for Kerberos if DNS fails)")
+    parser.add_argument("--only-non-default", action='store_true', help="Only show non-default privilege assignments")
+    parser.add_argument("--json-out", help="Output findings to JSON file")
+    parser.add_argument("--csv-out", help="Output findings to CSV file")
+    args = parser.parse_args()
+
+    target_info = parse_target(args.target)
+    username = target_info[1] or ''
+    password = target_info[2] or ''
+    domain = target_info[0] or ''
+    target = target_info[3]
+
+    l = target.split(':')
+    port = 445
+    if len(l) > 0:
+        host = l[0]
+    if len(l) > 1:
+        port = int(l[1])
+
+
+    if port == 139:
+        host = '*SMBSERVER'
+    else:
+        host = target
+
+    try:
+        smb = SMBConnection(
+            remoteName=host,
+            remoteHost=target,
+            sess_port=port,
+            preferredDialect=None,
+            timeout=30,# TODO: expose
+        )
+
+        lmhash, nthash = args.hashes.split(':')
+        smb.login(username, password, domain,lmhash=lmhash, nthash=nthash)
+        # TODO: kirbby'authy - awww that pinnk guy
+
+        console.print(f"[green][+] Authenticated to SMB on {target} using {'Kerberos' if args.kerberos else 'NTLM'}[/]")
+
+        sysvol_share = 'SYSVOL' # TODO: expose?
+        base_path = f"{domain}\\Policies"
+        gpos = list_gpos(smb, sysvol_share, base_path)
+
+        all_rows = []
+
+        # Set up transport to SAMR
+        rpctransport = transport.SMBTransport(
+            smb.getRemoteHost(), 445, r'\samr', *smb.getCredentials(),
+            doKerberos=args.kerberos, kdcHost=args.kdc_host
+        )
+        dce = rpctransport.get_dce_rpc()
+        dce.connect()
+        dce.bind(samr.MSRPC_UUID_SAMR)
+
+        # Connect to SAM server and open domain
+        resp = samr.hSamrConnect(dce)
+        server_handle = resp['ServerHandle']
+
+        domain_sid = samr.hSamrLookupDomainInSamServer(dce, server_handle, domain)['DomainId']
+        print(f"[+] Domain SID: {domain_sid.formatCanonical()}")
+
+        domain_handle = samr.hSamrOpenDomain(dce, server_handle, samr.DOMAIN_LOOKUP, domain_sid)['DomainHandle']
+
+        for gpo in gpos:
+            gpo_path = f"{base_path}\\{gpo}"
+            parse_gpttmpl(dce, domain_handle, domain_sid, smb, sysvol_share, gpo_path, domain, all_rows, args.kerberos, args.kdc_host)
+
+        dce.disconnect()
+        smb.logoff()
+
+        rows_to_display = [r for r in all_rows if r["NonDefault"]] if args.only_non_default else all_rows
+
+        if rows_to_display:
+            table = Table(show_lines=True)
+            table.add_column("GPO")
+            table.add_column("Privilege", style="cyan")
+            table.add_column("SID", style="yellow")
+            table.add_column("Resolved")
+            table.add_column("Tag")
+
+            for row in rows_to_display:
+                tag = "[bold red][!! NON-DEFAULT][/]" if row["NonDefault"] else "✅"
+                table.add_row(
+                    row["GPO"], row["Privilege"], row["SID"],
+                    escape(row["Resolved"]), tag
+                )
+
+            console.print(table)
+        else:
+            console.print("[bold yellow][*] No matching privilege assignments found.[/]")
+
+        if args.json_out:
+            export_to_json(rows_to_display, args.json_out)
+        if args.csv_out:
+            export_to_csv(rows_to_display, args.csv_out)
+
+
+    except Exception as e:
+        console.print(f"[bold red][-] Error: {e}[/]")
+
+if __name__ == "__main__":
+    main()
+
+

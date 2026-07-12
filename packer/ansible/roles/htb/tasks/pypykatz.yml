@@ -1,6 +1,0 @@
-- name: Install pypykatz
-  ansible.builtin.include_tasks: roles/python/tasks/bootstrap.yml
-  loop:
-    - name: pypykatz
-      repo: https://github.com/skelsec/pypykatz.git
-      pipx: true

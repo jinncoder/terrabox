@@ -1,0 +1,23 @@
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "pycryptodome",
+# ]
+# ///
+
+import sys
+
+from Crypto.Hash import MD4
+
+def main() -> None:
+    if len(sys.argv) != 2:
+        password = input("Password: ")
+    else:
+        password = sys.argv[1]
+    print(MD4.new(password.encode('utf-16le')).hexdigest().upper())
+
+
+if __name__ == "__main__":
+    main()
+

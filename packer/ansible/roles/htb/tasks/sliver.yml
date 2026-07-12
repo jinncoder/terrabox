@@ -57,7 +57,7 @@
 
 - name: Generate config for user
   ansible.builtin.command:
-    cmd: "{{ vm_tool_base }}/sliver/sliver-server operator --name {{ vm_user }} --lhost 127.0.0.1 --save /home/{{ vm_user }}/.sliver-client/configs"
+    cmd: "{{ vm_tool_base }}/sliver/sliver-server operator --name {{ vm_user }} --permissions all --lhost 127.0.0.1 --save /home/{{ vm_user }}/.sliver-client/configs"
   when: not sliver_config.stat.exists
 
 - name: Change ownership on config

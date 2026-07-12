@@ -1,0 +1,19 @@
+- name: Check if curl exists
+  ansible.builtin.stat:
+    path: /usr/local/bin/curl
+  register: curl_bin
+
+- name: Download curl
+  ansible.builtin.get_url:
+    url: "https://github.com/dashstatic/curl/releases/download/v8.21.0/curl.tgz"
+    dest: /tmp/curl.tgz
+    mode: "0600"
+  when: not curl_bin.stat.exists
+
+- name: Extract curl
+  ansible.builtin.unarchive:
+    src: /tmp/curl.tgz
+    dest: /usr/local
+    remote_src: true
+  when: not curl_bin.stat.exists
+
